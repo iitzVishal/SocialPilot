@@ -63,7 +63,14 @@ app.mount("/uploads/media", StaticFiles(directory=str(media_dir)), name="media")
 
 # Also expose /health at root level for load balancer / container health checks
 from app.api.v1.health import health_check
+from fastapi.responses import RedirectResponse
 app.add_api_route("/health", health_check, methods=["GET"], tags=["Health"])
+
+
+@app.get("/docs", include_in_schema=False)
+async def docs_redirect():
+    """Redirect /docs to versioned API documentation."""
+    return RedirectResponse(url=f"{settings.API_V1_STR}/docs")
 
 
 @app.get("/", tags=["Root"])

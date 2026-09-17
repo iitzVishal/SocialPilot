@@ -83,5 +83,5 @@ databases:
   # -------------------------------------------------------------
   - name: socialpilot-postgres
     databaseName: socialpilot_db
-    user: postgres
+    user: socialpilot_user
     plan: free
