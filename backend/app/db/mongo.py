@@ -55,12 +55,16 @@ def get_mongo_db() -> AsyncIOMotorDatabase:
                 mongo_manager.client.close()
             except Exception:
                 pass
-        mongo_manager.client = AsyncIOMotorClient(
-            settings.MONGODB_URL,
-            serverSelectionTimeoutMS=2000
-        )
-        mongo_manager.db = mongo_manager.client[settings.MONGODB_DB_NAME]
-        mongo_manager.loop = current_loop
+        try:
+            mongo_manager.client = AsyncIOMotorClient(
+                settings.MONGODB_URL,
+                serverSelectionTimeoutMS=2000
+            )
+            mongo_manager.db = mongo_manager.client[settings.MONGODB_DB_NAME]
+            mongo_manager.loop = current_loop
+        except Exception as e:
+            logger.warning(f"MongoDB client initialization failed: {e}")
+            return None
     return mongo_manager.db
 
 
