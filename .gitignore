@@ -1,0 +1,62 @@
+# =============================================================
+# SocialPilot - Comprehensive Git Ignore Rules
+# =============================================================
+
+# Environment variables & secrets (NEVER COMMIT SECRETS)
+.env
+.env.*
+.env.local
+.env.*.local
+*.env
+backend/.env
+frontend/.env
+!*.env.example
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+venv/
+.venv/
+env/
+backend/venv/
+.pytest_cache/
+backend/.pytest_cache/
+
+# Node & Frontend Build
+node_modules/
+frontend/node_modules/
+dist/
+build/
+frontend/dist/
+dist-ssr/
+*.local
+.vercel
+frontend/.vercel/
+
+# Media Uploads & Temporary Directories
+uploads/
+backend/uploads/
+scratch/
+backend/scratch/
+*.log
+logs/
+
+# Database dumps & backups
+*.sql
+*.sqlite
+*.sqlite3
+backend/backups/
+backups/
+
+# Operating System & IDE Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace

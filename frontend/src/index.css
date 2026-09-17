@@ -1,0 +1,209 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* =============================================================
+   SOCIALPILOT DUAL THEME SYSTEM (LIGHT & DARK)
+   ============================================================= */
+
+@layer base {
+  /* LIGHT MODE (Default :root) */
+  :root {
+    --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-heading: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /* Theme Tokens — Light Mode */
+    --sp-bg: #F5F8F6;
+    --sp-surface: #FFFFFF;
+    --sp-surface-2: #F0F5F2;
+    --sp-card: #FFFFFF;
+    --sp-card-hover: #F7FAF8;
+    --sp-border: rgba(20, 80, 45, 0.14);
+    --sp-border-strong: rgba(20, 80, 45, 0.25);
+    --sp-primary: #16A34A;
+    --sp-primary-bright: #22C55E;
+    --sp-text: #102018;
+    --sp-text-secondary: #53645A;
+    --sp-text-muted: #7A8980;
+
+    /* Layout Aliases */
+    --bg-page: var(--sp-bg);
+    --bg-surface: var(--sp-surface);
+    --bg-surface-elevated: var(--sp-surface);
+    --bg-surface-secondary: var(--sp-surface-2);
+    --bg-sidebar: #FFFFFF;
+    --bg-header: rgba(255, 255, 255, 0.92);
+
+    --border-default: var(--sp-border);
+    --border-subtle: rgba(20, 80, 45, 0.08);
+    --border-accent: rgba(22, 163, 74, 0.25);
+
+    --text-primary: var(--sp-text);
+    --text-secondary: var(--sp-text-secondary);
+    --text-muted: var(--sp-text-muted);
+
+    --accent-primary: #16A34A;
+    --accent-green-d: #15803D;
+    --accent-green-dd: #166534;
+    --accent-green-hi: #22C55E;
+
+    --gradient-primary: linear-gradient(135deg, #15803D 0%, #22C55E 100%);
+    --gradient-hero: linear-gradient(135deg, #166534 0%, #15803D 50%, #22C55E 100%);
+    --gradient-cta: linear-gradient(135deg, #15803D 0%, #22C55E 100%);
+
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03), 0 0 0 1px rgba(20, 80, 45, 0.12);
+    --shadow-card-hover: 0 4px 16px rgba(0,0,0,0.08), 0 0 0 1px rgba(22, 163, 74, 0.3);
+    --shadow-hero: 0 20px 50px -10px rgba(22, 163, 74, 0.25);
+
+    --active-nav-bg: rgba(22, 163, 74, 0.1);
+    --active-nav-text: #15803D;
+    --active-nav-border: rgba(22, 163, 74, 0.3);
+
+    --input-bg: #FFFFFF;
+    --input-border: rgba(20, 80, 45, 0.2);
+    --input-text: #102018;
+    --input-placeholder: #7A8980;
+    --input-focus-border: #16A34A;
+    --input-focus-ring: rgba(22, 163, 74, 0.15);
+  }
+
+  /* DARK MODE (Applied when .dark is on html/root) */
+  html.dark, .dark {
+    /* Theme Tokens — Dark Mode */
+    --sp-bg: #050907;
+    --sp-surface: #0A110D;
+    --sp-surface-2: #0D1712;
+    --sp-card: #0B1510;
+    --sp-card-hover: #0F1D14;
+    --sp-border: rgba(74, 222, 128, 0.16);
+    --sp-border-strong: rgba(74, 222, 128, 0.30);
+    --sp-primary: #22C55E;
+    --sp-primary-bright: #39FF72;
+    --sp-text: #F5F7F6;
+    --sp-text-secondary: #94A39A;
+    --sp-text-muted: #66756C;
+
+    /* Layout Aliases */
+    --bg-page: var(--sp-bg);
+    --bg-surface: var(--sp-surface);
+    --bg-surface-elevated: #0C1411;
+    --bg-surface-secondary: var(--sp-surface-2);
+    --bg-sidebar: #060B08;
+    --bg-header: rgba(5, 9, 7, 0.90);
+
+    --border-default: var(--sp-border);
+    --border-subtle: rgba(74, 222, 128, 0.08);
+    --border-accent: rgba(74, 222, 128, 0.30);
+
+    --text-primary: var(--sp-text);
+    --text-secondary: var(--sp-text-secondary);
+    --text-muted: var(--sp-text-muted);
+
+    --accent-primary: #39FF72;
+    --accent-green-d: #22C55E;
+    --accent-green-dd: #16A34A;
+    --accent-green-hi: #39FF72;
+
+    --gradient-primary: linear-gradient(135deg, #16A34A 0%, #39FF72 100%);
+    --gradient-hero: linear-gradient(135deg, #0F6B35 0%, #16A34A 50%, #39FF72 100%);
+    --gradient-cta: linear-gradient(135deg, #16A34A 0%, #39FF72 100%);
+
+    --shadow-card: 0 0 0 1px rgba(74, 222, 128, 0.16), 0 4px 24px -4px rgba(0,0,0,0.5);
+    --shadow-card-hover: 0 0 0 1px rgba(74, 222, 128, 0.30), 0 12px 40px -6px rgba(0,0,0,0.6), 0 0 24px -8px rgba(57,255,90,0.12);
+    --shadow-hero: 0 24px 80px -12px rgba(57,255,90,0.2);
+
+    --active-nav-bg: rgba(57, 255, 90, 0.09);
+    --active-nav-text: #39FF72;
+    --active-nav-border: rgba(57, 255, 90, 0.22);
+
+    --input-bg: #0D1712;
+    --input-border: rgba(74, 222, 128, 0.16);
+    --input-text: #F5F7F6;
+    --input-placeholder: #66756C;
+    --input-focus-border: #39FF72;
+    --input-focus-ring: rgba(57, 255, 90, 0.15);
+  }
+
+  /* ── Global base ── */
+  body {
+    background-color: var(--sp-bg);
+    color: var(--sp-text);
+    font-family: var(--font-sans);
+    margin: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    transition: background-color 0.25s ease, color 0.2s ease;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.025em;
+  }
+
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+/* =============================================================
+   SEMANTIC SP UTILITIES
+   ============================================================= */
+
+/* Surfaces & Cards */
+.sp-card,
+.sp-card-surface {
+  background-color: var(--sp-card);
+  border: 1px solid var(--sp-border);
+  color: var(--sp-text);
+  box-shadow: var(--shadow-card);
+  border-radius: 1rem;
+}
+
+.sp-card:hover,
+.sp-card-surface:hover {
+  background-color: var(--sp-card-hover);
+  border-color: var(--sp-border-strong);
+}
+
+.sp-bg            { background-color: var(--sp-bg); }
+.sp-surface       { background-color: var(--sp-surface); color: var(--sp-text); }
+.sp-surface-2     { background-color: var(--sp-surface-2); color: var(--sp-text); }
+
+/* Inputs */
+.sp-input {
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--input-text);
+}
+.sp-input::placeholder { color: var(--input-placeholder); }
+.sp-input:focus {
+  outline: none;
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+}
+
+/* Text */
+.sp-text          { color: var(--sp-text); }
+.sp-text-secondary{ color: var(--sp-text-secondary); }
+.sp-text-muted    { color: var(--sp-text-muted); }
+.sp-text-green    { color: var(--sp-primary); }
+
+/* Icon containers */
+.sp-icon-container {
+  background-color: var(--active-nav-bg);
+  border: 1px solid var(--sp-border);
+  color: var(--sp-primary);
+}
+
+/* Dividers & borders */
+.sp-divider { border-color: var(--sp-border); }
+.sp-border  { border: 1px solid var(--sp-border); }
+.sp-border-strong { border: 1px solid var(--sp-border-strong); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--sp-border-strong); border-radius: 99px; }
