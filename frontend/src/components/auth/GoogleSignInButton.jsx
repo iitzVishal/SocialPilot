@@ -9,6 +9,9 @@ export const GoogleSignInButton = ({ onSuccess, text = "Continue with Google" })
   const googleBtnContainerRef = useRef(null);
 
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const cleanClientId = (googleClientId || '')
+    .replace(/^\uFEFF/, '')
+    .trim();
 
   const handleGoogleCredentialResponse = async (response) => {
     if (!response || !response.credential) {
@@ -38,7 +41,7 @@ export const GoogleSignInButton = ({ onSuccess, text = "Continue with Google" })
   const hasInitializedRef = useRef(false);
 
   useEffect(() => {
-    if (!googleClientId) {
+    if (!cleanClientId) {
       setError('VITE_GOOGLE_CLIENT_ID is not configured.');
       console.warn('[Google Auth]: VITE_GOOGLE_CLIENT_ID is not configured.');
       return;
@@ -51,7 +54,7 @@ export const GoogleSignInButton = ({ onSuccess, text = "Continue with Google" })
     console.log('[Google OAuth Diagnostic]', {
       origin: window.location.origin,
       clientConfigured: 'YES',
-      clientSuffix: googleClientId ? googleClientId.slice(-6) : 'NONE',
+      clientSuffix: cleanClientId ? cleanClientId.slice(-6) : 'NONE',
       environment: import.meta.env.MODE || 'development',
     });
 
@@ -66,7 +69,7 @@ export const GoogleSignInButton = ({ onSuccess, text = "Continue with Google" })
         try {
           if (!hasInitializedRef.current) {
             window.google.accounts.id.initialize({
-              client_id: googleClientId.trim(),
+              client_id: cleanClientId,
               callback: callbackWrapper,
               auto_select: false,
               cancel_on_tap_outside: true,
@@ -117,7 +120,7 @@ export const GoogleSignInButton = ({ onSuccess, text = "Continue with Google" })
     } else {
       initGsi();
     }
-  }, [googleClientId]);
+  }, [cleanClientId]);
 
   return (
     <div className="w-full space-y-2">
