@@ -45,6 +45,13 @@ async def get_overview(
     """
     _verify_team_access(db, user, team_id)
 
+    now = datetime.now(timezone.utc)
+    period_start = now - timedelta(days=days)
+    base_filter: Dict[str, Any] = {
+        "team_id": team_id,
+        "created_at": {"$gte": period_start},
+    }
+
     status_counts: Dict[str, int] = {}
     lifetime_total = 0
     lifetime_published = 0
