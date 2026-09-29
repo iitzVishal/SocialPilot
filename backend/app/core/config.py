@@ -58,9 +58,12 @@ class Settings(BaseSettings):
         if not self.SQLALCHEMY_DATABASE_URI and self.DATABASE_URL:
             self.SQLALCHEMY_DATABASE_URI = self.DATABASE_URL
 
-        # Normalize postgres:// scheme to postgresql:// for SQLAlchemy 2.0
-        if self.SQLALCHEMY_DATABASE_URI and self.SQLALCHEMY_DATABASE_URI.startswith("postgres://"):
-            self.SQLALCHEMY_DATABASE_URI = self.SQLALCHEMY_DATABASE_URI.replace("postgres://", "postgresql://", 1)
+        # Normalize postgres:// scheme to postgresql+psycopg2:// for SQLAlchemy 2.0
+        if self.SQLALCHEMY_DATABASE_URI:
+            if self.SQLALCHEMY_DATABASE_URI.startswith("postgres://"):
+                self.SQLALCHEMY_DATABASE_URI = self.SQLALCHEMY_DATABASE_URI.replace("postgres://", "postgresql+psycopg2://", 1)
+            elif self.SQLALCHEMY_DATABASE_URI.startswith("postgresql://") and not self.SQLALCHEMY_DATABASE_URI.startswith("postgresql+"):
+                self.SQLALCHEMY_DATABASE_URI = self.SQLALCHEMY_DATABASE_URI.replace("postgresql://", "postgresql+psycopg2://", 1)
 
         # Assemble PostgreSQL URI if not explicitly set
         server = self.POSTGRES_HOST or self.POSTGRES_SERVER
