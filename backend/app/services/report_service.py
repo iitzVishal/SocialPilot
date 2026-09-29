@@ -600,3 +600,331 @@ class ReportService:
         excel_bytes = buffer.getvalue()
         buffer.close()
         return excel_bytes
+
+    @staticmethod
+    async def gather_campaign_report_data(
+        db: Session,
+        mongo_db: AsyncIOMotorDatabase,
+        user: User,
+        team_id: int,
+        campaign_id: int,
+    ) -> Dict[str, Any]:
+        """
+        Gather comprehensive metadata, posts, engagement, and ROI for an individual campaign.
+        """
+        team = TeamService.get_team_by_id(db, team_id, user)
+        from app.services.analytics_service import get_campaign_analytics
+        analytics_data = await get_campaign_analytics(db, mongo_db, user, campaign_id, team_id)
+
+        mongo_db = ensure_active_mongo_db(mongo_db)
+        posts_coll = mongo_db["posts"]
+        post_analytics_coll = mongo_db["post_analytics"]
+
+        posts_docs = await posts_coll.find({"team_id": team_id, "campaign_id": campaign_id}).sort("created_at", -1).to_list(length=500)
+
+        posts_list = []
+        for p in posts_docs:
+            pid = str(p["_id"])
+            p_analytics = await post_analytics_coll.find_one({"post_id": pid}) or {}
+            c_at = p.get("created_at")
+            c_at_str = c_at.isoformat() if isinstance(c_at, datetime) else str(c_at or "")
+            s_at = p.get("scheduled_at")
+            s_at_str = s_at.isoformat() if isinstance(s_at, datetime) else str(s_at or "")
+
+            posts_list.append({
+                "post_id": pid,
+                "title": p.get("title") or "Untitled",
+                "content": p.get("base_content", "")[:200],
+                "status": p.get("status", "draft"),
+                "platforms": ", ".join(p.get("target_platforms", [])),
+                "created_at": c_at_str,
+                "scheduled_at": s_at_str,
+                "likes": p_analytics.get("likes", 0),
+                "comments": p_analytics.get("comments", 0),
+                "shares": p_analytics.get("shares", 0),
+                "clicks": p_analytics.get("clicks", 0),
+                "impressions": p_analytics.get("impressions", 0),
+            })
+
+        return {
+            "team_id": team_id,
+            "team_name": team.name,
+            "campaign": analytics_data,
+            "posts_list": posts_list,
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        }
+
+    @staticmethod
+    def generate_campaign_pdf_report(report_data: Dict[str, Any]) -> bytes:
+        """
+        Render a PDF report dedicated to a single marketing campaign.
+        """
+        camp = report_data["campaign"]
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            rightMargin=0.5 * inch,
+            leftMargin=0.5 * inch,
+            topMargin=0.5 * inch,
+            bottomMargin=0.5 * inch,
+        )
+
+        styles = getSampleStyleSheet()
+        PRIMARY_COLOR = colors.HexColor('#0F172A')
+        SECONDARY_COLOR = colors.HexColor('#1E293B')
+        ACCENT_COLOR = colors.HexColor('#22C55E')
+        TEXT_MAIN = colors.HexColor('#1E293B')
+
+        title_style = ParagraphStyle(
+            'CampTitle',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=18,
+            leading=22,
+            textColor=PRIMARY_COLOR,
+            spaceAfter=4,
+        )
+        subtitle_style = ParagraphStyle(
+            'CampSubtitle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=9.5,
+            leading=13,
+            textColor=colors.HexColor('#64748B'),
+            spaceAfter=10,
+        )
+        section_heading = ParagraphStyle(
+            'CampSection',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=12,
+            leading=15,
+            textColor=SECONDARY_COLOR,
+            spaceBefore=12,
+            spaceAfter=6,
+        )
+        table_header_style = ParagraphStyle(
+            'CampTableHeader',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=9,
+            leading=11,
+            textColor=colors.white,
+        )
+        table_cell_style = ParagraphStyle(
+            'CampTableCell',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=8.5,
+            leading=11,
+            textColor=TEXT_MAIN,
+        )
+
+        story = []
+        story.append(Paragraph(f"Campaign Performance Report: {camp['name']}", title_style))
+        story.append(Paragraph(
+            f"Workspace: <b>{report_data['team_name']}</b> | Status: <b>{camp['status'].upper()}</b> | Generated: {report_data['generated_at']}",
+            subtitle_style
+        ))
+        story.append(HRFlowable(width="100%", thickness=1.5, color=ACCENT_COLOR, spaceAfter=12))
+
+        # KPI Table
+        story.append(Paragraph("1. Performance & Financial Overview", section_heading))
+        roi_meta = camp.get("roi", {})
+        roi_str = f"{roi_meta.get('roi_percentage')}%" if roi_meta.get('roi_percentage') is not None else "N/A"
+        cpe_str = f"${roi_meta.get('cost_per_engagement')}" if roi_meta.get('cost_per_engagement') is not None else "N/A"
+        cpc_str = f"${roi_meta.get('cost_per_click')}" if roi_meta.get('cost_per_click') is not None else "N/A"
+
+        overview_data = [
+            [
+                Paragraph("<b>Budget / Spend</b>", table_header_style),
+                Paragraph("<b>Revenue / Value</b>", table_header_style),
+                Paragraph("<b>Net Profit</b>", table_header_style),
+                Paragraph("<b>ROI (%)</b>", table_header_style),
+                Paragraph("<b>Cost / Engagement</b>", table_header_style),
+                Paragraph("<b>Cost / Click</b>", table_header_style),
+            ],
+            [
+                Paragraph(f"${camp.get('budget', 0.0):.2f}", table_cell_style),
+                Paragraph(f"${camp.get('revenue', 0.0):.2f}", table_cell_style),
+                Paragraph(f"${roi_meta.get('net_profit', 0.0):.2f}", table_cell_style),
+                Paragraph(roi_str, table_cell_style),
+                Paragraph(cpe_str, table_cell_style),
+                Paragraph(cpc_str, table_cell_style),
+            ]
+        ]
+        t1 = Table(overview_data, colWidths=[1.2 * inch] * 6)
+        t1.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_COLOR),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        story.append(t1)
+
+        # Engagement Metrics Table
+        story.append(Paragraph("2. Engagement & Reach Summary", section_heading))
+        eng_meta = camp.get("engagement", {})
+        eng_data = [
+            [
+                Paragraph("<b>Total Engagements</b>", table_header_style),
+                Paragraph("<b>Likes</b>", table_header_style),
+                Paragraph("<b>Comments</b>", table_header_style),
+                Paragraph("<b>Shares</b>", table_header_style),
+                Paragraph("<b>Clicks</b>", table_header_style),
+                Paragraph("<b>Impressions</b>", table_header_style),
+            ],
+            [
+                Paragraph(str(eng_meta.get('total_engagements', 0)), table_cell_style),
+                Paragraph(str(eng_meta.get('likes', 0)), table_cell_style),
+                Paragraph(str(eng_meta.get('comments', 0)), table_cell_style),
+                Paragraph(str(eng_meta.get('shares', 0)), table_cell_style),
+                Paragraph(str(eng_meta.get('clicks', 0)), table_cell_style),
+                Paragraph(str(eng_meta.get('impressions', 0)), table_cell_style),
+            ]
+        ]
+        t2 = Table(eng_data, colWidths=[1.2 * inch] * 6)
+        t2.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), SECONDARY_COLOR),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        story.append(t2)
+
+        # Associated Posts Table
+        story.append(Paragraph("3. Campaign Posts", section_heading))
+        posts_list = report_data.get("posts_list", [])
+        if posts_list:
+            posts_table_data = [
+                [
+                    Paragraph("<b>Title / Content</b>", table_header_style),
+                    Paragraph("<b>Status</b>", table_header_style),
+                    Paragraph("<b>Platforms</b>", table_header_style),
+                    Paragraph("<b>Likes</b>", table_header_style),
+                    Paragraph("<b>Comments</b>", table_header_style),
+                    Paragraph("<b>Clicks</b>", table_header_style),
+                ]
+            ]
+            for p in posts_list[:25]:
+                posts_table_data.append([
+                    Paragraph(p['content'][:70] + ("..." if len(p['content']) > 70 else ""), table_cell_style),
+                    Paragraph(p['status'].upper(), table_cell_style),
+                    Paragraph(p['platforms'], table_cell_style),
+                    Paragraph(str(p['likes']), table_cell_style),
+                    Paragraph(str(p['comments']), table_cell_style),
+                    Paragraph(str(p['clicks']), table_cell_style),
+                ])
+            t3 = Table(posts_table_data, colWidths=[2.5 * inch, 0.9 * inch, 1.2 * inch, 0.8 * inch, 0.9 * inch, 0.9 * inch])
+            t3.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_COLOR),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(t3)
+        else:
+            story.append(Paragraph("No posts currently associated with this campaign.", subtitle_style))
+
+        doc.build(story)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+        return pdf_bytes
+
+    @staticmethod
+    def generate_campaign_excel_report(report_data: Dict[str, Any]) -> bytes:
+        """
+        Render an Excel spreadsheet report dedicated to a single marketing campaign.
+        """
+        camp = report_data["campaign"]
+        wb = openpyxl.Workbook()
+        ws_sum = wb.active
+        ws_sum.title = "Campaign Overview"
+
+        header_font = Font(name='Calibri', size=11, bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='1E293B', end_color='1E293B', fill_type='solid')
+        title_font = Font(name='Calibri', size=14, bold=True, color='0F172A')
+        bold_font = Font(name='Calibri', size=11, bold=True)
+
+        ws_sum.append([f"Campaign Report: {camp['name']}"])
+        ws_sum.cell(row=1, column=1).font = title_font
+        ws_sum.append([f"Workspace: {report_data['team_name']} | Generated: {report_data['generated_at']}"])
+        ws_sum.append([])
+
+        ws_sum.append(["Campaign Metric", "Value"])
+        for col in range(1, 3):
+            cell = ws_sum.cell(row=4, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        roi = camp.get("roi", {})
+        eng = camp.get("engagement", {})
+        p_stats = camp.get("posts", {})
+
+        metrics = [
+            ("Status", camp.get("status", "").upper()),
+            ("Target Platforms", ", ".join(camp.get("target_platforms", []))),
+            ("Start Date", camp.get("start_date") or "N/A"),
+            ("End Date", camp.get("end_date") or "N/A"),
+            ("Budget (Spend)", f"${camp.get('budget', 0.0):.2f}"),
+            ("Revenue (Return)", f"${camp.get('revenue', 0.0):.2f}"),
+            ("Net Profit", f"${roi.get('net_profit', 0.0):.2f}"),
+            ("ROI (%)", f"{roi.get('roi_percentage')}%" if roi.get('roi_percentage') is not None else "N/A"),
+            ("Cost Per Engagement", f"${roi.get('cost_per_engagement')}" if roi.get('cost_per_engagement') is not None else "N/A"),
+            ("Cost Per Click", f"${roi.get('cost_per_click')}" if roi.get('cost_per_click') is not None else "N/A"),
+            ("Total Posts", p_stats.get("total", 0)),
+            ("Published Posts", p_stats.get("published", 0)),
+            ("Publishing Rate", f"{p_stats.get('publishing_rate', 0)}%"),
+            ("Total Engagements", eng.get("total_engagements", 0)),
+            ("Likes", eng.get("likes", 0)),
+            ("Comments", eng.get("comments", 0)),
+            ("Shares", eng.get("shares", 0)),
+            ("Clicks", eng.get("clicks", 0)),
+            ("Impressions", eng.get("impressions", 0)),
+        ]
+        for label, val in metrics:
+            ws_sum.append([label, val])
+
+        # Posts Sheet
+        ws_posts = wb.create_sheet(title="Campaign Posts")
+        ws_posts.append(["Post ID", "Content Snippet", "Status", "Platforms", "Likes", "Comments", "Shares", "Clicks", "Impressions"])
+        for col in range(1, 10):
+            cell = ws_posts.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        for p in report_data.get("posts_list", []):
+            ws_posts.append([
+                p["post_id"],
+                p["content"],
+                p["status"].upper(),
+                p["platforms"],
+                p["likes"],
+                p["comments"],
+                p["shares"],
+                p["clicks"],
+                p["impressions"],
+            ])
+
+        for sheet in wb.worksheets:
+            for col in sheet.columns:
+                max_len = 0
+                col_letter = get_column_letter(col[0].column)
+                for cell in col:
+                    val_str = str(cell.value or '')
+                    if len(val_str) > max_len:
+                        max_len = len(val_str)
+                sheet.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 60)
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        excel_bytes = buffer.getvalue()
+        buffer.close()
+        return excel_bytes
+

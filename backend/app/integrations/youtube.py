@@ -110,3 +110,91 @@ class YouTubeAdapter(BasePlatformAdapter):
                 return resp.status_code == 200
         except Exception:
             return True
+
+    def fetch_account_metrics(self, access_token: str, account_identifier: str) -> Dict[str, Any]:
+        """Fetch YouTube channel subscribers and total views via YouTube Data API."""
+        try:
+            url = "https://www.googleapis.com/youtube/v3/channels"
+            params = {"part": "statistics", "mine": "true"}
+            headers = {"Authorization": f"Bearer {access_token}"}
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.get(url, headers=headers, params=params)
+                if resp.status_code == 200:
+                    items = resp.json().get("items", [])
+                    if items:
+                        stats = items[0].get("statistics", {})
+                        subs = int(stats.get("subscriberCount", 0))
+                        views = int(stats.get("viewCount", 0))
+                        videos = int(stats.get("videoCount", 0))
+                        return {
+                            "supported": True,
+                            "platform": self.platform.value,
+                            "follower_count": subs,
+                            "following_count": 0,
+                            "post_count": videos,
+                            "total_views": views,
+                        }
+            return {
+                "supported": False,
+                "platform": self.platform.value,
+                "follower_count": 0,
+                "following_count": 0,
+                "post_count": 0,
+                "notice": "YouTube statistics could not be retrieved from API response."
+            }
+        except Exception as e:
+            logger.warning(f"YouTube fetch_account_metrics error: {e}")
+            return {
+                "supported": False,
+                "platform": self.platform.value,
+                "follower_count": 0,
+                "following_count": 0,
+                "post_count": 0,
+                "notice": str(e)
+            }
+
+    def fetch_post_metrics(self, access_token: str, external_post_id: str) -> Dict[str, Any]:
+        """Fetch YouTube video views, likes, and comments via YouTube Data API."""
+        try:
+            url = "https://www.googleapis.com/youtube/v3/videos"
+            params = {"part": "statistics", "id": external_post_id}
+            headers = {"Authorization": f"Bearer {access_token}"}
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.get(url, headers=headers, params=params)
+                if resp.status_code == 200:
+                    items = resp.json().get("items", [])
+                    if items:
+                        stats = items[0].get("statistics", {})
+                        views = int(stats.get("viewCount", 0))
+                        likes = int(stats.get("likeCount", 0))
+                        comments = int(stats.get("commentCount", 0))
+                        eng_rate = round(((likes + comments) / views * 100), 2) if views > 0 else 0.0
+                        return {
+                            "supported": True,
+                            "platform": self.platform.value,
+                            "likes": likes,
+                            "comments": comments,
+                            "shares": 0,
+                            "clicks": 0,
+                            "views": views,
+                            "impressions": views,
+                            "reach": views,
+                            "engagement_rate": eng_rate,
+                        }
+            return {
+                "supported": False,
+                "platform": self.platform.value,
+                "likes": 0, "comments": 0, "shares": 0, "clicks": 0,
+                "views": 0, "impressions": 0, "reach": 0, "engagement_rate": 0.0,
+                "notice": f"Video {external_post_id} statistics not found on YouTube."
+            }
+        except Exception as e:
+            logger.warning(f"YouTube fetch_post_metrics error for {external_post_id}: {e}")
+            return {
+                "supported": False,
+                "platform": self.platform.value,
+                "likes": 0, "comments": 0, "shares": 0, "clicks": 0,
+                "views": 0, "impressions": 0, "reach": 0, "engagement_rate": 0.0,
+                "notice": str(e)
+            }
+

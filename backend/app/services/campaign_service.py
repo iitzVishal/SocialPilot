@@ -41,6 +41,7 @@ class CampaignService:
             start_date=campaign_in.start_date,
             end_date=campaign_in.end_date,
             budget=campaign_in.budget or 0.0,
+            revenue=campaign_in.revenue or 0.0,
             status=campaign_in.status or CampaignStatus.DRAFT,
             created_by=user.id,
         )

@@ -1,4 +1,4 @@
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Any
 from pydantic import AnyHttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -39,6 +39,19 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
     REDIS_URL: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def clean_bom_and_whitespace(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            cleaned = {}
+            for k, v in data.items():
+                if isinstance(v, str):
+                    cleaned[k] = v.lstrip("\ufeff").strip()
+                else:
+                    cleaned[k] = v
+            return cleaned
+        return data
+
     @model_validator(mode="after")
     def assemble_connections(self) -> "Settings":
         # Support Render/Heroku standard DATABASE_URL
@@ -76,6 +89,7 @@ class Settings(BaseSettings):
     META_CLIENT_SECRET: Optional[str] = None
     META_REDIRECT_URI: str = "http://127.0.0.1:8000/api/v1/oauth/facebook/callback"
     INSTAGRAM_REDIRECT_URI: str = "http://127.0.0.1:8000/api/v1/oauth/instagram/callback"
+    META_API_VERSION: str = "v19.0"
 
     LINKEDIN_CLIENT_ID: Optional[str] = None
     LINKEDIN_CLIENT_SECRET: Optional[str] = None

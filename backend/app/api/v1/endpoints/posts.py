@@ -70,6 +70,7 @@ async def create_post(
 @router.get("", response_model=Dict[str, Any])
 async def list_posts(
     team_id: Optional[int] = Query(None, description="Filter by team ID"),
+    campaign_id: Optional[int] = Query(None, description="Filter by campaign ID"),
     status: Optional[PostStatus] = Query(None, description="Filter by post status"),
     platform: Optional[SocialPlatform] = Query(None, description="Filter by platform"),
     start_date: Optional[datetime] = Query(None, description="Filter from UTC date"),
@@ -81,7 +82,7 @@ async def list_posts(
     mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ):
     """
-    Query posts with pagination and filters (status, platform, date range).
+    Query posts with pagination and filters (campaign, status, platform, date range).
     Enforces user and team ownership authorization.
     """
     items, total = await PostService.list_posts(
@@ -89,6 +90,7 @@ async def list_posts(
         db=db,
         user=current_user,
         team_id=team_id,
+        campaign_id=campaign_id,
         status_filter=status,
         platform_filter=platform,
         start_date=start_date,

@@ -17,10 +17,21 @@ import {
   Edit2,
   Trash2,
   Send,
-  Layers
+  Layers,
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  Eye,
+  Users,
+  ThumbsUp,
+  MessageSquare,
+  Share2,
+  MousePointer,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useTeam } from '../context/TeamContext';
-import { campaignsAPI } from '../lib/api';
+import { campaignsAPI, reportsAPI } from '../lib/api';
 
 export default function CampaignDetailPage() {
   const { campaignId } = useParams();
@@ -29,8 +40,11 @@ export default function CampaignDetailPage() {
 
   const [campaign, setCampaign] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [exportingPDF, setExportingPDF] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   const loadCampaignData = async () => {
     if (!currentTeam?.id || !campaignId) return;
@@ -38,14 +52,19 @@ export default function CampaignDetailPage() {
       setLoading(true);
       setError(null);
 
-      // Fetch campaign details and associated posts
-      const [campRes, postsRes] = await Promise.all([
+      // Fetch campaign details, associated posts, and aggregated campaign analytics
+      const [campRes, postsRes, analyticsRes] = await Promise.all([
         campaignsAPI.get(campaignId, currentTeam.id),
-        campaignsAPI.getPosts(campaignId, currentTeam.id)
+        campaignsAPI.getPosts(campaignId, currentTeam.id),
+        campaignsAPI.getAnalytics(campaignId, currentTeam.id).catch((err) => {
+          console.warn('Campaign analytics unavailable:', err);
+          return { data: null };
+        }),
       ]);
 
       setCampaign(campRes.data);
       setPosts(postsRes.data.items || []);
+      setAnalytics(analyticsRes.data);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to load campaign details.');
     } finally {
@@ -56,6 +75,48 @@ export default function CampaignDetailPage() {
   useEffect(() => {
     loadCampaignData();
   }, [campaignId, currentTeam?.id]);
+
+  const handleExportPDF = async () => {
+    if (!campaign || !currentTeam?.id) return;
+    try {
+      setExportingPDF(true);
+      const res = await reportsAPI.downloadCampaignPDF(campaignId, currentTeam.id);
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Campaign_Report_${campaign.name.replace(/\s+/g, '_')}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      alert('Failed to download PDF report. Ensure backend report dependencies are available.');
+    } finally {
+      setExportingPDF(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (!campaign || !currentTeam?.id) return;
+    try {
+      setExportingExcel(true);
+      const res = await reportsAPI.downloadCampaignExcel(campaignId, currentTeam.id);
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Campaign_Report_${campaign.name.replace(/\s+/g, '_')}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      alert('Failed to download Excel report.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!campaign || !currentTeam?.id) return;
@@ -123,10 +184,28 @@ export default function CampaignDetailPage() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={handleExportPDF}
+            disabled={exportingPDF}
+            className="px-3 py-1.5 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {exportingPDF ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            Export PDF
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            disabled={exportingExcel}
+            className="px-3 py-1.5 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {exportingExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+            Export Excel
+          </button>
+
+          <button
             onClick={handleDelete}
             className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
           >
-            <Trash2 className="w-3.5 h-3.5" /> Delete Campaign
+            <Trash2 className="w-3.5 h-3.5" /> Delete
           </button>
         </div>
       </div>
@@ -147,7 +226,7 @@ export default function CampaignDetailPage() {
           </div>
 
           <button
-            onClick={() => navigate('/dashboard/composer')}
+            onClick={() => navigate(`/dashboard/composer?campaign=${campaignId}`)}
             className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg shadow-sm transition-colors text-xs"
           >
             <Plus className="w-4 h-4" /> Add Post to Campaign
@@ -216,6 +295,138 @@ export default function CampaignDetailPage() {
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Campaign Analytics & Engagement Overview (Milestone 3) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Engagement Card */}
+        <div className="p-6 rounded-2xl border border-[var(--sp-border)] bg-[var(--sp-card)] space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-[var(--sp-text)] flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-indigo-400" />
+              Engagement & Reach
+            </h3>
+            {analytics && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                Rate: {analytics.engagement_rate?.toFixed(2)}%
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3.5 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+              <span className="text-xs text-gray-400 flex items-center gap-1.5 mb-1">
+                <Eye className="w-3.5 h-3.5 text-blue-400" /> Impressions
+              </span>
+              <p className="text-lg font-bold text-[var(--sp-text)]">
+                {analytics?.total_impressions ? analytics.total_impressions.toLocaleString() : '0'}
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+              <span className="text-xs text-gray-400 flex items-center gap-1.5 mb-1">
+                <Users className="w-3.5 h-3.5 text-purple-400" /> Reach
+              </span>
+              <p className="text-lg font-bold text-[var(--sp-text)]">
+                {analytics?.total_reach ? analytics.total_reach.toLocaleString() : '0'}
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+              <span className="text-xs text-gray-400 flex items-center gap-1.5 mb-1">
+                <ThumbsUp className="w-3.5 h-3.5 text-emerald-400" /> Engagements
+              </span>
+              <p className="text-lg font-bold text-emerald-400">
+                {analytics?.total_engagements ? analytics.total_engagements.toLocaleString() : '0'}
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+              <span className="text-xs text-gray-400 flex items-center gap-1.5 mb-1">
+                <MousePointer className="w-3.5 h-3.5 text-amber-400" /> Clicks
+              </span>
+              <p className="text-lg font-bold text-amber-400">
+                {analytics?.clicks ? analytics.clicks.toLocaleString() : '0'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-xs pt-1 border-t border-[var(--sp-border)]">
+            <span className="text-gray-400">Breakdown:</span>
+            <span className="px-2 py-0.5 rounded bg-[var(--sp-surface-2)] text-gray-300">
+              Likes: {analytics?.likes?.toLocaleString() || 0}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-[var(--sp-surface-2)] text-gray-300">
+              Comments: {analytics?.comments?.toLocaleString() || 0}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-[var(--sp-surface-2)] text-gray-300">
+              Shares: {analytics?.shares?.toLocaleString() || 0}
+            </span>
+          </div>
+        </div>
+
+        {/* Marketing ROI & Financials Card */}
+        <div className="p-6 rounded-2xl border border-[var(--sp-border)] bg-[var(--sp-card)] space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-[var(--sp-text)] flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-400" />
+              Marketing ROI & Financials
+            </h3>
+            {(() => {
+              const b = campaign.budget || 0;
+              const r = campaign.revenue || 0;
+              const roi = b > 0 ? ((r - b) / b) * 100 : 0;
+              const isPos = roi >= 0;
+              return b > 0 ? (
+                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                  isPos ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                }`}>
+                  ROI: {isPos ? `+${roi.toFixed(1)}%` : `${roi.toFixed(1)}%`}
+                </span>
+              ) : null;
+            })()}
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3.5 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+              <p className="text-xs text-gray-400">Allocated Budget</p>
+              <p className="text-base font-bold text-[var(--sp-text)] mt-1">
+                ${(campaign.budget || 0).toLocaleString()}
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+              <p className="text-xs text-gray-400">Revenue</p>
+              <p className="text-base font-bold text-emerald-400 mt-1">
+                ${(campaign.revenue || 0).toLocaleString()}
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+              <p className="text-xs text-gray-400">Net Return</p>
+              <p className={`text-base font-bold mt-1 ${
+                (campaign.revenue || 0) >= (campaign.budget || 0) ? 'text-emerald-400' : 'text-rose-400'
+              }`}>
+                ${((campaign.revenue || 0) - (campaign.budget || 0)).toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-1 border-t border-[var(--sp-border)]">
+            <div className="text-xs flex items-center justify-between text-gray-400">
+              <span>Cost per Engagement (CPE):</span>
+              <span className="font-semibold text-[var(--sp-text)]">
+                {analytics?.cpe !== undefined && analytics.cpe > 0 ? `$${analytics.cpe.toFixed(2)}` : '—'}
+              </span>
+            </div>
+            <div className="text-xs flex items-center justify-between text-gray-400">
+              <span>Cost per Click (CPC):</span>
+              <span className="font-semibold text-[var(--sp-text)]">
+                {analytics?.cpc !== undefined && analytics.cpc > 0 ? `$${analytics.cpc.toFixed(2)}` : '—'}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

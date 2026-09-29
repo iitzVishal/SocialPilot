@@ -136,6 +136,12 @@ export const oauthAPI = {
     api.get(`/oauth/${provider}/authorize`, {
       params: teamId ? { team_id: teamId } : {},
     }),
+  getAvailableFacebookPages: (sessionToken) =>
+    api.get('/oauth/facebook/pages', {
+      params: { session_token: sessionToken },
+    }),
+  connectFacebookPage: (data) =>
+    api.post('/oauth/facebook/connect-page', data),
 };
 
 export const postsAPI = {
@@ -190,12 +196,20 @@ export const campaignsAPI = {
   update: (campaignId, teamId, data) => api.put(`/campaigns/${campaignId}`, data, { params: { team_id: teamId } }),
   delete: (campaignId, teamId) => api.delete(`/campaigns/${campaignId}`, { params: { team_id: teamId } }),
   getPosts: (campaignId, teamId, params) => api.get(`/campaigns/${campaignId}/posts`, { params: { team_id: teamId, ...params } }),
+  getAnalytics: (campaignId, teamId) => api.get(`/campaigns/${campaignId}/analytics`, { params: { team_id: teamId } }),
+  compare: (teamId, campaignIds) => api.post('/campaigns/compare', { campaign_ids: campaignIds }, { params: { team_id: teamId } }),
+  attachPost: (campaignId, postId, teamId) => api.post(`/campaigns/${campaignId}/posts/${postId}`, {}, { params: { team_id: teamId } }),
+  detachPost: (campaignId, postId, teamId) => api.delete(`/campaigns/${campaignId}/posts/${postId}`, { params: { team_id: teamId } }),
 };
 
 export const analyticsAPI = {
   getOverview: (teamId, days = 30) => api.get('/analytics/overview', { params: { team_id: teamId, days } }),
   getPostsTimeline: (teamId, days = 30) => api.get('/analytics/posts/timeline', { params: { team_id: teamId, days } }),
   getCampaignPerformance: (teamId) => api.get('/analytics/campaigns/performance', { params: { team_id: teamId } }),
+  getEngagement: (teamId, params = {}) => api.get('/analytics/engagement', { params: { team_id: teamId, ...params } }),
+  getAudience: (teamId, params = {}) => api.get('/analytics/audience', { params: { team_id: teamId, ...params } }),
+  getROI: (teamId, days = 30) => api.get('/analytics/roi', { params: { team_id: teamId, days } }),
+  sync: (teamId) => api.post('/analytics/sync', {}, { params: { team_id: teamId } }),
 };
 
 export const notificationsAPI = {
@@ -214,6 +228,16 @@ export const reportsAPI = {
   downloadExcel: (teamId, days = 30) =>
     api.get('/reports/excel', {
       params: { team_id: teamId, days },
+      responseType: 'blob',
+    }),
+  downloadCampaignPDF: (campaignId, teamId) =>
+    api.get(`/reports/campaign/${campaignId}/pdf`, {
+      params: { team_id: teamId },
+      responseType: 'blob',
+    }),
+  downloadCampaignExcel: (campaignId, teamId) =>
+    api.get(`/reports/campaign/${campaignId}/excel`, {
+      params: { team_id: teamId },
       responseType: 'blob',
     }),
 };

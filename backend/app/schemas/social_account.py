@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.enums import SocialPlatform, SocialAccountStatus
 
@@ -78,4 +78,38 @@ class SocialAccountSyncResponse(BaseModel):
     synced_at: datetime
     connection_status: SocialAccountStatus
     sync_status: str
+    message: str
+
+
+class FacebookInstagramAccount(BaseModel):
+    id: str
+    username: Optional[str] = None
+    name: Optional[str] = None
+    profile_picture_url: Optional[str] = None
+
+
+class FacebookPageItem(BaseModel):
+    page_id: str
+    name: str
+    category: Optional[str] = None
+    picture_url: Optional[str] = None
+    has_instagram: bool = False
+    instagram_account: Optional[FacebookInstagramAccount] = None
+
+
+class FacebookPagesResponse(BaseModel):
+    pages: List[FacebookPageItem]
+
+
+class FacebookConnectPageRequest(BaseModel):
+    session_token: str
+    page_id: str
+    connect_instagram: bool = False
+    team_id: Optional[int] = None
+
+
+class FacebookConnectPageResponse(BaseModel):
+    status: str
+    facebook_account: SocialAccountResponse
+    instagram_account: Optional[SocialAccountResponse] = None
     message: str

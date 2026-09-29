@@ -8,7 +8,7 @@ import React, {
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { accountsAPI, postsAPI, mediaAPI } from '../lib/api';
+import { accountsAPI, postsAPI, mediaAPI, campaignsAPI } from '../lib/api';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import {
@@ -311,6 +311,12 @@ export const PostComposerPage = () => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
 
+  /* ── Campaign Association (Milestone 3) ── */
+  const [campaigns, setCampaigns] = useState([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState(
+    searchParams.get('campaign') ? Number(searchParams.get('campaign')) : null
+  );
+
   /* ── Media ── */
   const [mediaFiles, setMediaFiles] = useState([]); // [{ localId, file, previewUrl, uploading, error, uploadedMediaId, uploadedUrl }]
   const [isDragging, setIsDragging] = useState(false);
@@ -353,6 +359,22 @@ export const PostComposerPage = () => {
     return () => { cancelled = true; };
   }, [activeTeamId]);
 
+  /* ─── Load active campaigns for team (Milestone 3) ─── */
+  useEffect(() => {
+    let cancelled = false;
+    const loadCampaigns = async () => {
+      if (!activeTeamId) return;
+      try {
+        const res = await campaignsAPI.list(activeTeamId, { limit: 100 });
+        if (!cancelled) setCampaigns(res.data?.items || []);
+      } catch (err) {
+        console.error('Failed to load campaigns for composer:', err);
+      }
+    };
+    loadCampaigns();
+    return () => { cancelled = true; };
+  }, [activeTeamId]);
+
   /* ─── Load draft when ?draft=<id> is in the URL ─── */
   useEffect(() => {
     if (!draftId) return;
@@ -378,6 +400,9 @@ export const PostComposerPage = () => {
         // Populate content fields
         setTitle(post.title || '');
         setContent(post.base_content || '');
+        if (post.campaign_id) {
+          setSelectedCampaignId(post.campaign_id);
+        }
 
         // Populate account selection (IDs from target_accounts)
         setSelectedAccountIds(post.target_accounts || []);
@@ -614,6 +639,7 @@ export const PostComposerPage = () => {
           target_platforms: selectedPlatforms,
           media_attachments: buildMediaAttachments(),
           platform_customizations: {},
+          campaign_id: selectedCampaignId || null,
           // Only include scheduled_at when the user actively chose schedule action
           ...(action === 'schedule'
             ? { scheduled_at: new Date(`${scheduleDate}T${scheduleTime}`).toISOString() }
@@ -649,6 +675,7 @@ export const PostComposerPage = () => {
           target_platforms: selectedPlatforms,
           media_attachments: buildMediaAttachments(),
           platform_customizations: {},
+          campaign_id: selectedCampaignId || undefined,
           publish_now: action === 'publish',
           scheduled_at: action === 'schedule' ? new Date(`${scheduleDate}T${scheduleTime}`).toISOString() : undefined,
           team_id: activeTeamId || undefined,
@@ -932,6 +959,27 @@ export const PostComposerPage = () => {
               />
               <p id={`${titleId}-hint`} className="text-[10px] text-slate-400 dark:text-slate-600 mt-1">
                 Used for internal organisation only. Not published.
+              </p>
+            </div>
+
+            {/* Campaign Selection (Milestone 3) */}
+            <div className="mb-4">
+              <SectionLabel htmlFor="composer-campaign-select">Campaign (optional)</SectionLabel>
+              <select
+                id="composer-campaign-select"
+                value={selectedCampaignId || ''}
+                onChange={(e) => setSelectedCampaignId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-800/30 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-violet-500/60 dark:focus:border-violet-500/50 focus:bg-white dark:focus:bg-slate-800/60 focus:outline-none focus:ring-2 focus:ring-violet-500/15 transition-all"
+              >
+                <option value="">No Campaign (Independent Post)</option>
+                {campaigns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.status})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1">
+                Assign this post to a campaign to track aggregated analytics and ROI.
               </p>
             </div>
 

@@ -9,7 +9,7 @@ celery_app = Celery(
     "socialpilot",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.publishing", "app.tasks.email"]
+    include=["app.tasks.publishing", "app.tasks.email", "app.tasks.analytics"]
 )
 
 # Celery Configuration
@@ -29,6 +29,7 @@ celery_app.conf.update(
         "app.tasks.publishing.publish_post_task": {"queue": "publishing"},
         "app.tasks.publishing.cancel_scheduled_task": {"queue": "default"},
         "app.tasks.email.send_invitation_email_task": {"queue": "default"},
+        "app.tasks.analytics.sync_team_analytics_task": {"queue": "default"},
     },
     task_default_queue="default",
 )

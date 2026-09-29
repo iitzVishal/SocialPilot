@@ -18,6 +18,7 @@ class Campaign(Base):
     start_date = Column(DateTime(timezone=True), nullable=True)
     end_date = Column(DateTime(timezone=True), nullable=True)
     budget = Column(Float, nullable=True, default=0.0)
+    revenue = Column(Float, nullable=True, default=0.0)
     status = Column(SQLEnum(CampaignStatus), nullable=False, default=CampaignStatus.DRAFT, index=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

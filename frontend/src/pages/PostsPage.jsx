@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useId } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { postsAPI, teamsAPI } from '../lib/api';
+import { postsAPI, teamsAPI, campaignsAPI } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
 import { Button } from '../components/ui/Button';
@@ -533,6 +533,8 @@ export const PostsPage = () => {
   // Filters
   const [statusFilter,   setStatusFilter]   = useState('all');
   const [platformFilter, setPlatformFilter] = useState('all');
+  const [campaignFilter, setCampaignFilter] = useState('all');
+  const [campaigns, setCampaigns]           = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate,   setEndDate]   = useState('');
 
@@ -559,8 +561,13 @@ export const PostsPage = () => {
           }
         })
         .catch((err) => console.error('Error fetching workspace role:', err));
+
+      campaignsAPI.list(activeTeamId, { limit: 100 })
+        .then((res) => setCampaigns(res.data?.items || []))
+        .catch((err) => console.error('Error fetching campaigns for posts filter:', err));
     } else {
       setUserRole(null);
+      setCampaigns([]);
     }
   }, [activeTeamId, user]);
 
@@ -589,6 +596,7 @@ export const PostsPage = () => {
       const params = { skip: page * PAGE_LIMIT, limit: PAGE_LIMIT };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (platformFilter !== 'all') params.platform = platformFilter;
+      if (campaignFilter !== 'all') params.campaign_id = Number(campaignFilter);
       if (activeTeamId) params.team_id = activeTeamId;
       if (startDate) params.start_date = new Date(startDate).toISOString();
       if (endDate) {
@@ -609,17 +617,18 @@ export const PostsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, platformFilter, startDate, endDate, page, activeTeamId]);
+  }, [statusFilter, platformFilter, campaignFilter, startDate, endDate, page, activeTeamId]);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
   // Reset to page 0 when filters change
-  useEffect(() => { setPage(0); }, [statusFilter, platformFilter, startDate, endDate]);
+  useEffect(() => { setPage(0); }, [statusFilter, platformFilter, campaignFilter, startDate, endDate]);
 
   /* ─── Filters ─── */
   const clearFilters = () => {
     setStatusFilter('all');
     setPlatformFilter('all');
+    setCampaignFilter('all');
     setStartDate('');
     setEndDate('');
     setPage(0);
@@ -779,6 +788,25 @@ export const PostsPage = () => {
               </select>
             </div>
 
+            {campaigns.length > 0 && (
+              <div className="min-w-[160px]">
+                <label htmlFor="posts-campaign-filter" className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1">
+                  Campaign
+                </label>
+                <select
+                  id="posts-campaign-filter"
+                  value={campaignFilter}
+                  onChange={(e) => setCampaignFilter(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-800/30 px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500/50 transition-all [color-scheme:light] dark:[color-scheme:dark] cursor-pointer"
+                >
+                  <option value="all">All Campaigns</option>
+                  {campaigns.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div>
               <label htmlFor={startDateId} className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1">
                 From
@@ -805,7 +833,7 @@ export const PostsPage = () => {
               />
             </div>
 
-            {(statusFilter !== 'all' || platformFilter !== 'all' || hasDateFilter) && (
+            {(statusFilter !== 'all' || platformFilter !== 'all' || campaignFilter !== 'all' || hasDateFilter) && (
               <button
                 type="button"
                 onClick={clearFilters}

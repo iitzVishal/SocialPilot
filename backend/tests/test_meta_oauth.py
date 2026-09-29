@@ -138,10 +138,19 @@ async def test_facebook_callback_success_account_creation(test_user):
     })
 
     mock_token_resp = {"access_token": "mock_fb_access_token_777", "expires_in": 3600}
-    mock_profile_resp = {"account_identifier": "fb_page_999", "account_name": "Test FB Page"}
+    mock_pages_resp = [
+        {
+            "page_id": "fb_page_999",
+            "name": "Test FB Page",
+            "category": "Brand",
+            "picture_url": "https://example.com/avatar.jpg",
+            "page_access_token": "mock_page_token_123",
+            "instagram_account": None
+        }
+    ]
 
     with patch("app.integrations.facebook.FacebookAdapter.exchange_code_for_token", return_value=mock_token_resp), \
-         patch("app.integrations.facebook.FacebookAdapter.get_user_profile", return_value=mock_profile_resp):
+         patch("app.integrations.facebook.FacebookAdapter.get_user_pages", return_value=mock_pages_resp):
 
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
@@ -152,8 +161,38 @@ async def test_facebook_callback_success_account_creation(test_user):
                 f"/api/v1/oauth/facebook/callback?code=mock_code_123&state={state_token}"
             )
             assert resp.status_code == 307
-            assert "status=success" in resp.headers["location"]
-            assert "platform=facebook" in resp.headers["location"]
+            loc = resp.headers["location"]
+            assert "status=select_pages" in loc
+            assert "session_token=" in loc
+
+            # Extract session token
+            session_token = loc.split("session_token=")[1].split("&")[0]
+
+            # Fetch available pages
+            token = test_user["token"]
+            pages_resp = await client.get(
+                f"/api/v1/oauth/facebook/pages?session_token={session_token}",
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            assert pages_resp.status_code == 200
+            pages_data = pages_resp.json()
+            assert len(pages_data["pages"]) == 1
+            assert pages_data["pages"][0]["page_id"] == "fb_page_999"
+
+            # Connect the selected page
+            connect_resp = await client.post(
+                "/api/v1/oauth/facebook/connect-page",
+                json={
+                    "session_token": session_token,
+                    "page_id": "fb_page_999",
+                    "connect_instagram": False
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            assert connect_resp.status_code == 200
+            connect_data = connect_resp.json()
+            assert connect_data["status"] == "success"
+            assert connect_data["facebook_account"]["account_identifier"] == "fb_page_999"
 
             # Verify SocialAccount record created in DB
             session = test_user["session"]
@@ -178,7 +217,7 @@ async def test_instagram_callback_success_account_creation(test_user):
     })
 
     mock_token_resp = {"access_token": "mock_ig_access_token_888", "expires_in": 3600}
-    mock_profile_resp = {"account_identifier": "ig_user_555", "account_name": "Test Instagram Account"}
+    mock_profile_resp = {"account_identifier": "ig_user_555", "account_name": "Test Instagram Account", "account_type": "BUSINESS"}
 
     with patch("app.integrations.instagram.InstagramAdapter.exchange_code_for_token", return_value=mock_token_resp), \
          patch("app.integrations.instagram.InstagramAdapter.get_user_profile", return_value=mock_profile_resp):

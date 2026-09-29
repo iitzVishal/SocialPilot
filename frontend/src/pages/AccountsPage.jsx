@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { accountsAPI, oauthAPI } from '../lib/api';
 import { useTeam } from '../context/TeamContext';
-import { Card, CardHeader } from '../components/ui/Card';
+import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -66,6 +66,15 @@ export const AccountsPage = () => {
   const [connectingProvider, setConnectingProvider] = useState(null);
   const [connectError, setConnectError] = useState('');
 
+  // Page selection state for Meta / Facebook Page Flow
+  const [isPageSelectOpen, setIsPageSelectOpen] = useState(false);
+  const [activeSessionToken, setActiveSessionToken] = useState(null);
+  const [availablePages, setAvailablePages] = useState([]);
+  const [selectedPageId, setSelectedPageId] = useState('');
+  const [connectInstagram, setConnectInstagram] = useState(false);
+  const [pageSelectLoading, setPageSelectLoading] = useState(false);
+  const [pageSelectError, setPageSelectError] = useState('');
+
   // Permissions Form State
   const [customPermissions, setCustomPermissions] = useState({});
 
@@ -94,15 +103,65 @@ export const AccountsPage = () => {
     }
   };
 
+  const loadAvailablePages = async (token) => {
+    setPageSelectLoading(true);
+    setPageSelectError('');
+    setIsPageSelectOpen(true);
+    try {
+      const res = await oauthAPI.getAvailableFacebookPages(token);
+      const pages = res.data?.pages || [];
+      setAvailablePages(pages);
+      if (pages.length > 0) {
+        setSelectedPageId(pages[0].page_id);
+        setConnectInstagram(Boolean(pages[0].has_instagram));
+      }
+    } catch (err) {
+      console.error('Failed to load available Facebook pages:', err);
+      const msg = err.response?.data?.detail || 'Failed to load available Facebook Pages. OAuth session may have expired.';
+      setPageSelectError(msg);
+    } finally {
+      setPageSelectLoading(false);
+    }
+  };
+
+  const handleConnectPage = async () => {
+    if (!selectedPageId || !activeSessionToken) return;
+    setPageSelectLoading(true);
+    setPageSelectError('');
+    try {
+      const res = await oauthAPI.connectFacebookPage({
+        session_token: activeSessionToken,
+        page_id: selectedPageId,
+        connect_instagram: connectInstagram,
+        team_id: activeTeamId || null,
+      });
+      showToast(res.data?.message || 'Connected Facebook Page successfully!', 'success');
+      setIsPageSelectOpen(false);
+      fetchAccounts(selectedPlatform);
+    } catch (err) {
+      console.error('Connect page error:', err);
+      const msg = err.response?.data?.detail || 'Failed to connect selected page.';
+      setPageSelectError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setPageSelectLoading(false);
+    }
+  };
+
   // Process OAuth Callback Query Parameters
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const statusParam = searchParams.get('status');
+    const sessionTokenParam = searchParams.get('session_token');
     const providerParam = searchParams.get('platform') || searchParams.get('provider');
     const messageParam = searchParams.get('message');
     const accountNameParam = searchParams.get('account_name');
 
-    if (statusParam === 'success') {
+    if (statusParam === 'select_pages' && sessionTokenParam) {
+      setActiveSessionToken(sessionTokenParam);
+      loadAvailablePages(sessionTokenParam);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (statusParam === 'success') {
       const name = accountNameParam ? decodeURIComponent(accountNameParam) : (providerParam || 'Social');
       showToast(`Connected ${name} account successfully via official OAuth 2.0!`, 'success');
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -117,6 +176,7 @@ export const AccountsPage = () => {
 
   // Handle Initiating Official OAuth Authorization Code Flow
   const handleInitiateOAuth = async (providerId) => {
+    if (connectingProvider) return;
     setConnectingProvider(providerId);
     setConnectError('');
     try {
@@ -291,6 +351,8 @@ export const AccountsPage = () => {
             const isConnected = account.connection_status === 'connected';
             const isExpired = account.is_token_expired;
             const brandStyle = platformBrandStyles[account.platform] || platformBrandStyles.facebook;
+            const avatarUrl = account.platform_permissions?.picture_url || account.platform_permissions?.avatar_url || account.platform_permissions?.profile_picture_url;
+            const category = account.platform_permissions?.category;
 
             return (
               <Card key={account.id} hover className="flex flex-col justify-between">
@@ -298,18 +360,35 @@ export const AccountsPage = () => {
                   {/* Card Header */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-11 w-11 items-center justify-center rounded-xl ${brandStyle.bg} ${brandStyle.border} border ${brandStyle.color} font-bold text-xs shadow-2xs`}
-                      >
-                        {account.platform.slice(0, 2).toUpperCase()}
-                      </div>
+                      {avatarUrl ? (
+                        <img
+                          src={avatarUrl}
+                          alt={account.account_name}
+                          className="h-11 w-11 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shadow-2xs"
+                        />
+                      ) : (
+                        <div
+                          className={`flex h-11 w-11 items-center justify-center rounded-xl ${brandStyle.bg} ${brandStyle.border} border ${brandStyle.color} font-bold text-xs shadow-2xs`}
+                        >
+                          {account.platform.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
                       <div>
                         <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 font-heading">
-                          {account.account_name}
+                          {account.platform === 'instagram' && !account.account_name.startsWith('@')
+                            ? `@${account.account_name}`
+                            : account.account_name}
                         </h3>
-                        <p className="text-[11px] text-slate-400 font-mono">
-                          ID: {account.account_identifier}
-                        </p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-[11px] text-slate-400 font-mono">
+                            ID: {account.account_identifier}
+                          </p>
+                          {category && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-medium">
+                              {category}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <Badge
@@ -576,6 +655,160 @@ export const AccountsPage = () => {
             isLoading={actionLoading}
           >
             Confirm Disconnect
+          </Button>
+        </div>
+      </Modal>
+
+      {/* 5. Select Facebook Page Modal */}
+      <Modal
+        isOpen={isPageSelectOpen}
+        onClose={() => setIsPageSelectOpen(false)}
+        title="Select Facebook Page to Connect"
+        description="Choose which Facebook Page you want to manage. If an Instagram Professional account is connected to the Page, you can also link it now."
+      >
+        {pageSelectError && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-400 border border-rose-500/20">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <span>{pageSelectError}</span>
+          </div>
+        )}
+
+        {pageSelectLoading && availablePages.length === 0 ? (
+          <div className="space-y-3 py-4">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+        ) : availablePages.length === 0 ? (
+          <div className="p-4 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-xs">
+            <p className="font-semibold">No Facebook Pages Found</p>
+            <p className="mt-1">
+              Your Facebook account does not currently manage any Pages. You must create or be an admin of at least one Facebook Page to connect with SocialPilot.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3 py-2">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Available Pages ({availablePages.length})
+            </label>
+            <div className="max-h-64 overflow-y-auto space-y-2.5 pr-1">
+              {availablePages.map((page) => {
+                const isSelected = selectedPageId === page.page_id;
+                return (
+                  <div
+                    key={page.page_id}
+                    onClick={() => {
+                      setSelectedPageId(page.page_id);
+                      if (page.has_instagram) {
+                        setConnectInstagram(true);
+                      }
+                    }}
+                    className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-cyan-500 bg-cyan-500/10 dark:border-violet-500 dark:bg-violet-500/10'
+                        : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="facebook_page_select"
+                      checked={isSelected}
+                      onChange={() => {
+                        setSelectedPageId(page.page_id);
+                        if (page.has_instagram) {
+                          setConnectInstagram(true);
+                        }
+                      }}
+                      className="mt-1 h-4 w-4 text-cyan-600 dark:text-violet-600 focus:ring-cyan-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2.5">
+                        {page.picture_url ? (
+                          <img
+                            src={page.picture_url}
+                            alt={page.name}
+                            className="h-8 w-8 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
+                          />
+                        ) : (
+                          <div className="h-8 w-8 rounded-lg bg-[#1877F2]/10 border border-[#1877F2]/20 flex items-center justify-center text-[#1877F2] font-bold text-xs">
+                            FB
+                          </div>
+                        )}
+                        <div className="truncate">
+                          <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {page.name}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono">
+                            ID: {page.page_id} {page.category ? `• ${page.category}` : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Instagram Linked Section for this page */}
+                      {isSelected && (
+                        <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800">
+                          {page.has_instagram && page.instagram_account ? (
+                            <div className="rounded-lg p-2.5 bg-gradient-to-tr from-amber-500/10 via-rose-500/10 to-purple-500/10 border border-[#E4405F]/20">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  {page.instagram_account.profile_picture_url ? (
+                                    <img
+                                      src={page.instagram_account.profile_picture_url}
+                                      alt={page.instagram_account.username}
+                                      className="h-7 w-7 rounded-full object-cover border border-[#E4405F]/30"
+                                    />
+                                  ) : (
+                                    <div className="h-7 w-7 rounded-full bg-[#E4405F]/20 flex items-center justify-center text-[#E4405F] font-bold text-[10px]">
+                                      IG
+                                    </div>
+                                  )}
+                                  <div>
+                                    <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                      @{page.instagram_account.username || page.instagram_account.name}
+                                    </p>
+                                    <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                      Connected Instagram Business Account
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <label className="mt-2.5 flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={connectInstagram}
+                                  onChange={(e) => setConnectInstagram(e.target.checked)}
+                                  className="h-3.5 w-3.5 rounded text-rose-600 focus:ring-rose-500"
+                                />
+                                <span>Also connect linked Instagram account</span>
+                              </label>
+                            </div>
+                          ) : (
+                            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-800">
+                              <p className="italic">
+                                An Instagram Professional/Business account is not connected to this Facebook Page.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="outline" onClick={() => setIsPageSelectOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleConnectPage}
+            isLoading={pageSelectLoading}
+            disabled={!selectedPageId || availablePages.length === 0}
+          >
+            Connect Selected Page
           </Button>
         </div>
       </Modal>

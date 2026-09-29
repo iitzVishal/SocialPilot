@@ -139,10 +139,11 @@ def verify_target_accounts(
 
 def verify_campaign_access(
     db: Session,
+    user: User,
     campaign_id: Optional[int],
     team_id: Optional[int]
 ) -> Optional[Campaign]:
-    """Validate that campaign exists in PostgreSQL and belongs to the target team workspace."""
+    """Validate that campaign exists in PostgreSQL, belongs to the target team workspace, and user has access."""
     if not campaign_id:
         return None
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
@@ -156,6 +157,15 @@ def verify_campaign_access(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Campaign {campaign_id} does not belong to team {team_id}"
         )
+    # Check that user belongs to the campaign's team or is owner/sysadmin
+    if user.role != UserRole.ADMINISTRATOR:
+        membership = db.query(TeamMember).filter_by(team_id=campaign.team_id, user_id=user.id).first()
+        is_owner = db.query(Team).filter_by(id=campaign.team_id, owner_id=user.id).first() is not None
+        if not membership and not is_owner:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You do not have access to campaign {campaign_id}"
+            )
     return campaign
 
 
@@ -181,6 +191,7 @@ class PostService:
         if post_in.campaign_id:
             verify_campaign_access(
                 db=db,
+                user=user,
                 campaign_id=post_in.campaign_id,
                 team_id=post_in.team_id
             )
@@ -376,6 +387,7 @@ class PostService:
         if post_update.campaign_id is not None:
             verify_campaign_access(
                 db=db,
+                user=user,
                 campaign_id=post_update.campaign_id,
                 team_id=current_post.get("team_id")
             )

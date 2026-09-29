@@ -77,3 +77,54 @@ async def export_excel_report(
             "Access-Control-Expose-Headers": "Content-Disposition",
         },
     )
+
+
+@router.get("/campaign/{campaign_id}/pdf")
+async def export_campaign_pdf_report(
+    campaign_id: int,
+    team_id: int = Query(..., description="ID of the team workspace"),
+    current_user: User = Depends(deps.get_current_active_user),
+    db: Session = Depends(deps.get_db),
+    mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+):
+    """
+    Generate and download a comprehensive PDF report dedicated to an individual campaign.
+    """
+    data = await ReportService.gather_campaign_report_data(db, mongo_db, current_user, team_id, campaign_id)
+    pdf_bytes = ReportService.generate_campaign_pdf_report(data)
+
+    filename = f"socialpilot_campaign_{campaign_id}_report.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@router.get("/campaign/{campaign_id}/excel")
+async def export_campaign_excel_report(
+    campaign_id: int,
+    team_id: int = Query(..., description="ID of the team workspace"),
+    current_user: User = Depends(deps.get_current_active_user),
+    db: Session = Depends(deps.get_db),
+    mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+):
+    """
+    Generate and download an Excel (.xlsx) report dedicated to an individual campaign.
+    """
+    data = await ReportService.gather_campaign_report_data(db, mongo_db, current_user, team_id, campaign_id)
+    excel_bytes = ReportService.generate_campaign_excel_report(data)
+
+    filename = f"socialpilot_campaign_{campaign_id}_report.xlsx"
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+

@@ -18,7 +18,12 @@ import {
   PauseCircle,
   Clock,
   Archive,
-  FileText
+  FileText,
+  BarChart3,
+  TrendingUp,
+  X,
+  ArrowRight,
+  TrendingDown
 } from 'lucide-react';
 import { useTeam } from '../context/TeamContext';
 import { campaignsAPI } from '../lib/api';
@@ -45,6 +50,13 @@ export default function CampaignsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
+  // Selection & Comparison State (Milestone 3)
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState([]);
+  const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
+  const [comparisonData, setComparisonData] = useState(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState(null);
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState(null);
@@ -60,6 +72,7 @@ export default function CampaignsPage() {
     start_date: '',
     end_date: '',
     budget: 0,
+    revenue: 0,
     status: 'active'
   });
 
@@ -97,6 +110,7 @@ export default function CampaignsPage() {
         start_date: campaign.start_date ? campaign.start_date.split('T')[0] : '',
         end_date: campaign.end_date ? campaign.end_date.split('T')[0] : '',
         budget: campaign.budget || 0,
+        revenue: campaign.revenue || 0,
         status: campaign.status || 'draft'
       });
     } else {
@@ -109,11 +123,33 @@ export default function CampaignsPage() {
         start_date: '',
         end_date: '',
         budget: 0,
+        revenue: 0,
         status: 'active'
       });
     }
     setFormError(null);
     setIsModalOpen(true);
+  };
+
+  const handleToggleSelectCampaign = (id) => {
+    setSelectedCampaignIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleOpenComparisonModal = async () => {
+    if (selectedCampaignIds.length < 2) return;
+    setIsComparisonModalOpen(true);
+    setComparisonLoading(true);
+    setComparisonError(null);
+    try {
+      const res = await campaignsAPI.compare(currentTeam.id, selectedCampaignIds);
+      setComparisonData(res.data);
+    } catch (err) {
+      setComparisonError(err.response?.data?.detail || 'Failed to compare campaigns.');
+    } finally {
+      setComparisonLoading(false);
+    }
   };
 
   const handlePlatformToggle = (platformId) => {
@@ -141,6 +177,7 @@ export default function CampaignsPage() {
         start_date: formData.start_date ? new Date(formData.start_date).toISOString() : null,
         end_date: formData.end_date ? new Date(formData.end_date).toISOString() : null,
         budget: parseFloat(formData.budget) || 0,
+        revenue: parseFloat(formData.revenue) || 0,
         status: formData.status
       };
 
@@ -200,13 +237,25 @@ export default function CampaignsPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => handleOpenModal()}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg shadow-sm transition-colors text-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Create Campaign
-        </button>
+        <div className="flex items-center gap-3">
+          {selectedCampaignIds.length >= 2 && (
+            <button
+              onClick={handleOpenComparisonModal}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium rounded-lg shadow-sm transition-all text-sm shadow-violet-500/25"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Compare Selected ({selectedCampaignIds.length})
+            </button>
+          )}
+
+          <button
+            onClick={() => handleOpenModal()}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg shadow-sm transition-colors text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Create Campaign
+          </button>
+        </div>
       </div>
 
       {/* Filter Toolbar */}
@@ -231,9 +280,16 @@ export default function CampaignsPage() {
           </div>
         </div>
 
-        <div className="text-xs text-gray-400">
-          Showing <span className="font-semibold text-[var(--sp-text)]">{campaigns.length}</span> of{' '}
-          <span className="font-semibold text-[var(--sp-text)]">{total}</span> campaigns
+        <div className="flex items-center gap-3 text-xs text-gray-400">
+          {selectedCampaignIds.length > 0 && (
+            <span className="text-indigo-400 font-semibold">
+              {selectedCampaignIds.length} selected for comparison
+            </span>
+          )}
+          <div>
+            Showing <span className="font-semibold text-[var(--sp-text)]">{campaigns.length}</span> of{' '}
+            <span className="font-semibold text-[var(--sp-text)]">{total}</span> campaigns
+          </div>
         </div>
       </div>
 
@@ -274,84 +330,118 @@ export default function CampaignsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {campaigns.map((c) => (
-            <div
-              key={c.id}
-              className="flex flex-col justify-between p-5 rounded-xl border border-[var(--sp-border)] bg-[var(--sp-card)] hover:border-indigo-500/40 transition-all shadow-sm group"
-            >
-              <div className="space-y-3">
-                {/* Card Top */}
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    {getStatusBadge(c.status)}
-                    <h3
-                      onClick={() => navigate(`/dashboard/campaigns/${c.id}`)}
-                      className="text-lg font-bold text-[var(--sp-text)] mt-2 hover:text-indigo-400 cursor-pointer transition-colors line-clamp-1"
-                    >
-                      {c.name}
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
-                    <button
-                      onClick={() => handleOpenModal(c)}
-                      className="p-1.5 text-gray-400 hover:text-indigo-400 hover:bg-[var(--sp-surface-2)] rounded-md transition-colors"
-                      title="Edit Campaign"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(c.id, c.name)}
-                      className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
-                      title="Delete Campaign"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+          {campaigns.map((c) => {
+            const isSelected = selectedCampaignIds.includes(c.id);
+            const budgetNum = c.budget || 0;
+            const revenueNum = c.revenue || 0;
+            const hasROI = budgetNum > 0;
+            const roiPercent = hasROI ? ((revenueNum - budgetNum) / budgetNum) * 100 : 0;
 
-                {/* Description / Objective */}
-                {c.objective && (
-                  <div className="flex items-center gap-1.5 text-xs text-indigo-400 font-medium">
-                    <Target className="w-3.5 h-3.5" />
-                    <span className="truncate">{c.objective}</span>
-                  </div>
-                )}
-                {c.description && (
-                  <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
-                    {c.description}
-                  </p>
-                )}
-
-                {/* Metadata List */}
-                <div className="pt-2 border-t border-[var(--sp-border)] space-y-2 text-xs text-gray-400">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5 text-gray-500" /> Date Range:
-                    </span>
-                    <span className="font-medium text-[var(--sp-text)]">
-                      {c.start_date ? new Date(c.start_date).toLocaleDateString() : 'TBD'} –{' '}
-                      {c.end_date ? new Date(c.end_date).toLocaleDateString() : 'TBD'}
-                    </span>
+            return (
+              <div
+                key={c.id}
+                className={`flex flex-col justify-between p-5 rounded-xl border bg-[var(--sp-card)] transition-all shadow-sm group ${
+                  isSelected ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-[var(--sp-border)] hover:border-indigo-500/40'
+                }`}
+              >
+                <div className="space-y-3">
+                  {/* Card Top */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        title="Select for comparison"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelectCampaign(c.id)}
+                        className="mt-1 h-4 w-4 rounded border-gray-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <div>
+                        {getStatusBadge(c.status)}
+                        <h3
+                          onClick={() => navigate(`/dashboard/campaigns/${c.id}`)}
+                          className="text-lg font-bold text-[var(--sp-text)] mt-1.5 hover:text-indigo-400 cursor-pointer transition-colors line-clamp-1"
+                        >
+                          {c.name}
+                        </h3>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
+                      <button
+                        onClick={() => handleOpenModal(c)}
+                        className="p-1.5 text-gray-400 hover:text-indigo-400 hover:bg-[var(--sp-surface-2)] rounded-md transition-colors"
+                        title="Edit Campaign"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(c.id, c.name)}
+                        className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
+                        title="Delete Campaign"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1">
-                      <DollarSign className="w-3.5 h-3.5 text-gray-500" /> Budget:
-                    </span>
-                    <span className="font-medium text-[var(--sp-text)]">
-                      ${c.budget ? c.budget.toLocaleString() : '0'}
-                    </span>
-                  </div>
+                  {/* Description / Objective */}
+                  {c.objective && (
+                    <div className="flex items-center gap-1.5 text-xs text-indigo-400 font-medium">
+                      <Target className="w-3.5 h-3.5" />
+                      <span className="truncate">{c.objective}</span>
+                    </div>
+                  )}
+                  {c.description && (
+                    <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
+                      {c.description}
+                    </p>
+                  )}
 
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1">
-                      <FileText className="w-3.5 h-3.5 text-gray-500" /> Post Count:
-                    </span>
-                    <span className="font-semibold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">
-                      {c.post_count} posts
-                    </span>
+                  {/* Metadata List */}
+                  <div className="pt-2 border-t border-[var(--sp-border)] space-y-2 text-xs text-gray-400">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-gray-500" /> Duration:
+                      </span>
+                      <span className="font-medium text-[var(--sp-text)]">
+                        {c.start_date ? new Date(c.start_date).toLocaleDateString() : 'TBD'} –{' '}
+                        {c.end_date ? new Date(c.end_date).toLocaleDateString() : 'TBD'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <DollarSign className="w-3.5 h-3.5 text-gray-500" /> Budget / Revenue:
+                      </span>
+                      <span className="font-medium text-[var(--sp-text)]">
+                        ${budgetNum.toLocaleString()} / ${revenueNum.toLocaleString()}
+                      </span>
+                    </div>
+
+                    {hasROI && (
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          {roiPercent >= 0 ? (
+                            <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <TrendingDown className="w-3.5 h-3.5 text-rose-400" />
+                          )}
+                          Marketing ROI:
+                        </span>
+                        <span className={`font-bold ${roiPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {roiPercent >= 0 ? `+${roiPercent.toFixed(1)}%` : `${roiPercent.toFixed(1)}%`}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-3.5 h-3.5 text-gray-500" /> Post Count:
+                      </span>
+                      <span className="font-semibold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">
+                        {c.post_count} posts
+                      </span>
+                    </div>
                   </div>
-                </div>
 
                 {/* Target Platforms */}
                 {c.target_platforms && c.target_platforms.length > 0 && (
@@ -376,7 +466,8 @@ export default function CampaignsPage() {
                 View Campaign Details <ExternalLink className="w-3.5 h-3.5" />
               </button>
             </div>
-          ))}
+          );
+        })}
         </div>
       )}
 
@@ -511,8 +602,8 @@ export default function CampaignsPage() {
                 </div>
               </div>
 
-              {/* Budget & Status */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Budget, Revenue & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="font-semibold text-gray-300">Budget ($)</label>
                   <input
@@ -521,6 +612,19 @@ export default function CampaignsPage() {
                     step="0.01"
                     value={formData.budget}
                     onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--sp-surface-2)] border border-[var(--sp-border)] text-[var(--sp-text)] focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-gray-300">Revenue ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.revenue}
+                    onChange={(e) => setFormData({ ...formData, revenue: e.target.value })}
+                    placeholder="0.00"
                     className="w-full px-3 py-2 rounded-lg bg-[var(--sp-surface-2)] border border-[var(--sp-border)] text-[var(--sp-text)] focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
@@ -560,6 +664,149 @@ export default function CampaignsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Campaign Comparison Modal (Milestone 3) */}
+      {isComparisonModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
+          <div className="relative w-full max-w-5xl rounded-2xl border border-[var(--sp-border)] bg-[var(--sp-card)] shadow-2xl p-6 space-y-6 my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-[var(--sp-border)]">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-600/10 text-indigo-400">
+                  <BarChart3 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-[var(--sp-text)]">Campaign Comparison Analysis</h3>
+                  <p className="text-xs text-gray-400">
+                    Comparative performance, engagement, reach, and marketing ROI benchmarks.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsComparisonModalOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-[var(--sp-text)] hover:bg-[var(--sp-surface-2)] rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {comparisonLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 space-y-3">
+                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                <p className="text-sm text-gray-400">Aggregating comparative metrics...</p>
+              </div>
+            ) : comparisonError ? (
+              <div className="p-4 rounded-xl border border-red-500/25 bg-red-500/10 text-red-300 text-sm flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <span>{comparisonError}</span>
+              </div>
+            ) : comparisonData?.campaigns ? (
+              <div className="space-y-6">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+                    <p className="text-xs text-gray-400">Campaigns Compared</p>
+                    <p className="text-xl font-bold text-[var(--sp-text)] mt-1">{comparisonData.campaigns.length}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+                    <p className="text-xs text-gray-400">Total Spend</p>
+                    <p className="text-xl font-bold text-[var(--sp-text)] mt-1">
+                      ${comparisonData.campaigns.reduce((acc, c) => acc + (c.budget || 0), 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+                    <p className="text-xs text-gray-400">Total Revenue</p>
+                    <p className="text-xl font-bold text-emerald-400 mt-1">
+                      ${comparisonData.campaigns.reduce((acc, c) => acc + (c.revenue || 0), 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-[var(--sp-surface-2)] border border-[var(--sp-border)]">
+                    <p className="text-xs text-gray-400">Total Engagements</p>
+                    <p className="text-xl font-bold text-indigo-400 mt-1">
+                      {comparisonData.campaigns.reduce((acc, c) => acc + (c.total_engagements || 0), 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Comparison Table */}
+                <div className="overflow-x-auto rounded-xl border border-[var(--sp-border)]">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-[var(--sp-surface-2)] text-gray-400 uppercase tracking-wider font-semibold border-b border-[var(--sp-border)]">
+                      <tr>
+                        <th className="py-3 px-4">Campaign</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3">Posts</th>
+                        <th className="py-3 px-3">Impressions</th>
+                        <th className="py-3 px-3">Reach</th>
+                        <th className="py-3 px-3">Engagements</th>
+                        <th className="py-3 px-3">Engagement Rate</th>
+                        <th className="py-3 px-3">Spend</th>
+                        <th className="py-3 px-3">Revenue</th>
+                        <th className="py-3 px-4">ROI %</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--sp-border)] text-gray-200">
+                      {comparisonData.campaigns.map((item) => {
+                        const roi = item.roi_percentage;
+                        const isPositive = roi >= 0;
+                        return (
+                          <tr key={item.campaign_id} className="hover:bg-[var(--sp-surface-2)]/50 transition-colors">
+                            <td className="py-3 px-4 font-bold text-[var(--sp-text)]">
+                              <div>{item.campaign_name}</div>
+                              {item.objective && (
+                                <div className="text-[10px] text-gray-400 font-normal">{item.objective}</div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              {getStatusBadge(item.status)}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="font-medium">{item.published_posts}</span> / {item.total_posts}
+                            </td>
+                            <td className="py-3 px-3 font-medium">
+                              {item.total_impressions.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3 font-medium">
+                              {item.total_reach.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3 font-medium text-indigo-400">
+                              {item.total_engagements.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3 font-semibold">
+                              {item.engagement_rate.toFixed(2)}%
+                            </td>
+                            <td className="py-3 px-3 font-medium">
+                              ${item.budget.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3 font-medium text-emerald-400">
+                              ${item.revenue.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                                isPositive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' : 'bg-rose-500/10 text-rose-400 border border-rose-500/25'
+                              }`}>
+                                {isPositive ? `+${roi.toFixed(1)}%` : `${roi.toFixed(1)}%`}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={() => setIsComparisonModalOpen(false)}
+                    className="px-4 py-2 bg-[var(--sp-surface-2)] text-gray-200 text-xs font-semibold rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Close Comparison
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Optional, List
+from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import SocialPlatform, CampaignStatus
@@ -12,7 +12,8 @@ class CampaignCreate(BaseModel):
     target_platforms: List[SocialPlatform] = Field(default_factory=list, description="Target platforms")
     start_date: Optional[datetime] = Field(None, description="Campaign start date")
     end_date: Optional[datetime] = Field(None, description="Campaign end date")
-    budget: Optional[float] = Field(0.0, ge=0.0, description="Allocated budget")
+    budget: Optional[float] = Field(0.0, ge=0.0, description="Allocated budget (spend)")
+    revenue: Optional[float] = Field(0.0, ge=0.0, description="Attributed revenue or value for ROI calculation")
     status: Optional[CampaignStatus] = Field(CampaignStatus.DRAFT, description="Initial campaign status")
 
     @model_validator(mode="after")
@@ -30,6 +31,7 @@ class CampaignUpdate(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     budget: Optional[float] = Field(None, ge=0.0)
+    revenue: Optional[float] = Field(None, ge=0.0)
     status: Optional[CampaignStatus] = None
 
     @model_validator(mode="after")
@@ -49,6 +51,7 @@ class CampaignResponse(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     budget: Optional[float] = 0.0
+    revenue: Optional[float] = 0.0
     status: str
     created_by: Optional[int] = None
     created_at: datetime
@@ -66,3 +69,56 @@ class CampaignListResponse(BaseModel):
     page: int
     limit: int
     total_pages: int
+
+
+class CampaignAnalyticsResponse(BaseModel):
+    campaign_id: int
+    name: str
+    status: str
+    target_platforms: List[str]
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    budget: float = 0.0
+    revenue: float = 0.0
+    posts: Dict[str, Any]
+    engagement: Dict[str, Any]
+    roi: Dict[str, Any]
+
+
+class CampaignComparisonRequest(BaseModel):
+    campaign_ids: List[int] = Field(..., min_length=2, max_length=10, description="List of campaign IDs to compare (2 to 10)")
+
+
+class CampaignComparisonItem(BaseModel):
+    campaign_id: int
+    name: str
+    status: str
+    target_platforms: List[str]
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    duration_days: Optional[int] = None
+    budget: float = 0.0
+    revenue: float = 0.0
+    total_posts: int = 0
+    published_posts: int = 0
+    publishing_rate: float = 0.0
+    likes: int = 0
+    comments: int = 0
+    shares: int = 0
+    clicks: int = 0
+    views: int = 0
+    impressions: int = 0
+    reach: int = 0
+    total_engagements: int = 0
+    engagement_rate: float = 0.0
+    roi_percentage: Optional[float] = None
+    cost_per_engagement: Optional[float] = None
+    cost_per_click: Optional[float] = None
+
+
+class CampaignComparisonResponse(BaseModel):
+    campaigns: List[CampaignComparisonItem]
+    winner_by_engagement: Optional[Dict[str, Any]] = None
+    winner_by_roi: Optional[Dict[str, Any]] = None
+    winner_by_reach: Optional[Dict[str, Any]] = None
+    generated_at: str

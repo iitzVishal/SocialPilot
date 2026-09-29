@@ -34,3 +34,31 @@ class BasePlatformAdapter(ABC):
     def revoke_access(self, access_token: str) -> bool:
         """Revoke application authorization on the remote platform."""
         pass
+
+    def fetch_account_metrics(self, access_token: str, account_identifier: str) -> Dict[str, Any]:
+        """Fetch remote account-level audience & follower metrics."""
+        return {
+            "supported": False,
+            "platform": self.platform.value,
+            "follower_count": 0,
+            "following_count": 0,
+            "post_count": 0,
+            "notice": f"Account metrics not supported or unconfigured for {self.platform.value}"
+        }
+
+    def fetch_post_metrics(self, access_token: str, external_post_id: str) -> Dict[str, Any]:
+        """Fetch post-level engagement and reach metrics from platform API."""
+        return {
+            "supported": False,
+            "platform": self.platform.value,
+            "likes": 0,
+            "comments": 0,
+            "shares": 0,
+            "clicks": 0,
+            "views": 0,
+            "impressions": 0,
+            "reach": 0,
+            "engagement_rate": 0.0,
+            "notice": f"Post metrics not supported or unconfigured for {self.platform.value}"
+        }
+

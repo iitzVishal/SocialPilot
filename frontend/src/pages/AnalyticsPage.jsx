@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTeam } from '../context/TeamContext';
-import { analyticsAPI, reportsAPI } from '../lib/api';
+import { analyticsAPI, reportsAPI, campaignsAPI } from '../lib/api';
 import {
   BarChart3,
   TrendingUp,
@@ -34,6 +34,17 @@ import {
   Globe,
   FileText,
   FileSpreadsheet,
+  Users,
+  Eye,
+  MousePointer,
+  ThumbsUp,
+  MessageSquare,
+  DollarSign,
+  TrendingDown,
+  Check,
+  HelpCircle,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Badge } from '../components/ui/Badge';
@@ -380,17 +391,42 @@ function PeriodSelector({ value, onChange }) {
 ───────────────────────────────────────────────────── */
 export default function AnalyticsPage() {
   const { currentTeam } = useTeam();
+  const [activeTab, setActiveTab] = useState('overview');
   const [days, setDays] = useState(30);
+
+  // Overview states
   const [overview, setOverview] = useState(null);
   const [timeline, setTimeline] = useState(null);
   const [campaigns, setCampaigns] = useState(null);
+
+  // Engagement states
+  const [engagement, setEngagement] = useState(null);
+  const [engagementLoading, setEngagementLoading] = useState(false);
+
+  // Audience states
+  const [audience, setAudience] = useState(null);
+  const [audienceLoading, setAudienceLoading] = useState(false);
+
+  // ROI states
+  const [roi, setRoi] = useState(null);
+  const [roiLoading, setRoiLoading] = useState(false);
+
+  // Comparison states
+  const [allCampaigns, setAllCampaigns] = useState([]);
+  const [selectedCompIds, setSelectedCompIds] = useState([]);
+  const [compData, setCompData] = useState(null);
+  const [compLoading, setCompLoading] = useState(false);
+
+  // General states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastRefreshed, setLastRefreshed] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState(null);
 
   const teamId = currentTeam?.id;
 
-  const fetchAll = useCallback(async () => {
+  const fetchOverview = useCallback(async () => {
     if (!teamId) return;
     setLoading(true);
     setError(null);
@@ -405,15 +441,115 @@ export default function AnalyticsPage() {
       setCampaigns(cpRes.data);
       setLastRefreshed(new Date());
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Failed to load analytics data.');
+      setError(err?.response?.data?.detail || 'Failed to load overview data.');
     } finally {
       setLoading(false);
     }
   }, [teamId, days]);
 
+  const fetchEngagement = useCallback(async () => {
+    if (!teamId) return;
+    setEngagementLoading(true);
+    try {
+      const res = await analyticsAPI.getEngagement(teamId, { days });
+      setEngagement(res.data);
+    } catch (err) {
+      console.error('Failed to load engagement analytics:', err);
+    } finally {
+      setEngagementLoading(false);
+    }
+  }, [teamId, days]);
+
+  const fetchAudience = useCallback(async () => {
+    if (!teamId) return;
+    setAudienceLoading(true);
+    try {
+      const res = await analyticsAPI.getAudience(teamId, { days });
+      setAudience(res.data);
+    } catch (err) {
+      console.error('Failed to load audience analytics:', err);
+    } finally {
+      setAudienceLoading(false);
+    }
+  }, [teamId, days]);
+
+  const fetchROI = useCallback(async () => {
+    if (!teamId) return;
+    setRoiLoading(true);
+    try {
+      const res = await analyticsAPI.getROI(teamId, days);
+      setRoi(res.data);
+    } catch (err) {
+      console.error('Failed to load ROI analytics:', err);
+    } finally {
+      setRoiLoading(false);
+    }
+  }, [teamId, days]);
+
+  const fetchCampaignsForComparison = useCallback(async () => {
+    if (!teamId) return;
+    try {
+      const res = await campaignsAPI.list(teamId, { limit: 100 });
+      const items = res.data?.items || [];
+      setAllCampaigns(items);
+      if (selectedCompIds.length === 0 && items.length >= 2) {
+        setSelectedCompIds(items.slice(0, 3).map(c => c.id));
+      }
+    } catch (err) {
+      console.error('Failed to load campaigns list for comparison:', err);
+    }
+  }, [teamId, selectedCompIds.length]);
+
+  const runComparison = useCallback(async (idsToCompare) => {
+    const ids = idsToCompare || selectedCompIds;
+    if (!teamId || ids.length < 2) return;
+    setCompLoading(true);
+    try {
+      const res = await campaignsAPI.compare(teamId, ids);
+      setCompData(res.data);
+    } catch (err) {
+      console.error('Failed to compare campaigns:', err);
+    } finally {
+      setCompLoading(false);
+    }
+  }, [teamId, selectedCompIds]);
+
+  // Initial load
   useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+    fetchOverview();
+    fetchCampaignsForComparison();
+  }, [fetchOverview, fetchCampaignsForComparison]);
+
+  // Tab switch effect
+  useEffect(() => {
+    if (activeTab === 'engagement') fetchEngagement();
+    if (activeTab === 'audience') fetchAudience();
+    if (activeTab === 'roi') fetchROI();
+    if (activeTab === 'comparison' && selectedCompIds.length >= 2 && !compData) {
+      runComparison();
+    }
+  }, [activeTab, fetchEngagement, fetchAudience, fetchROI, runComparison, selectedCompIds.length, compData]);
+
+  const handleSyncAnalytics = async () => {
+    if (!teamId || syncing) return;
+    setSyncing(true);
+    setSyncNotice(null);
+    try {
+      const res = await analyticsAPI.sync(teamId);
+      setSyncNotice(`Analytics sync triggered. ${res.data?.message || 'Fetching real-time social metrics in background.'}`);
+      setTimeout(() => {
+        fetchOverview();
+        if (activeTab === 'engagement') fetchEngagement();
+        if (activeTab === 'audience') fetchAudience();
+        if (activeTab === 'roi') fetchROI();
+        if (activeTab === 'comparison') runComparison();
+      }, 2500);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to trigger analytics sync.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [downloadingExcel, setDownloadingExcel] = useState(false);
@@ -426,14 +562,14 @@ export default function AnalyticsPage() {
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `socialpilot_report_team_${teamId}_${days}d.pdf`);
+      link.setAttribute('download', `SocialPilot_Workspace_Report_${days}d.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to download PDF report:', err);
-      alert('Failed to generate PDF report. Please try again.');
+      alert('Failed to generate PDF report.');
     } finally {
       setDownloadingPdf(false);
     }
@@ -447,16 +583,26 @@ export default function AnalyticsPage() {
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `socialpilot_report_team_${teamId}_${days}d.xlsx`);
+      link.setAttribute('download', `SocialPilot_Workspace_Report_${days}d.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to download Excel report:', err);
-      alert('Failed to generate Excel report. Please try again.');
+      alert('Failed to generate Excel report.');
     } finally {
       setDownloadingExcel(false);
+    }
+  };
+
+  const toggleComparisonCampaign = (id) => {
+    const updated = selectedCompIds.includes(id)
+      ? selectedCompIds.filter(x => x !== id)
+      : [...selectedCompIds, id];
+    setSelectedCompIds(updated);
+    if (updated.length >= 2) {
+      runComparison(updated);
     }
   };
 
@@ -467,10 +613,8 @@ export default function AnalyticsPage() {
     label: PLATFORM_META[d.platform]?.label || d.platform,
     color: PLATFORM_META[d.platform]?.color || '#64748B',
   }));
-
   const campaignRows = campaigns?.campaigns ?? [];
 
-  /* ── No team guard ── */
   if (!teamId) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -483,43 +627,38 @@ export default function AnalyticsPage() {
     );
   }
 
-  /* ── Error state ── */
-  if (error && !loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <AlertCircle className="h-12 w-12 text-red-500" />
-        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{error}</p>
-        <button
-          onClick={fetchAll}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-80"
-          style={{ background: 'var(--sp-primary)' }}
-        >
-          <RefreshCw className="h-4 w-4" /> Retry
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-6 pb-8 animate-sp-fade-in-up">
       {/* ── Page Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold font-heading" style={{ color: 'var(--text-primary)' }}>
-            Analytics Dashboard
+            Analytics & Intelligence
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            Real publishing metrics for <span className="font-semibold">{currentTeam?.name}</span>
+            Workspace performance and multi-platform analytics for <span className="font-semibold">{currentTeam?.name}</span>
             {lastRefreshed && (
               <span className="ml-2 text-xs opacity-60">
-                · Refreshed {lastRefreshed.toLocaleTimeString()}
+                · Synced {lastRefreshed.toLocaleTimeString()}
               </span>
             )}
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+
+        <div className="flex items-center gap-2.5 flex-wrap">
           <PeriodSelector value={days} onChange={setDays} />
-          
+
+          {/* Sync Analytics Trigger */}
+          <button
+            onClick={handleSyncAnalytics}
+            disabled={syncing}
+            title="Sync metrics with social APIs"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all hover:shadow-xs disabled:opacity-50 cursor-pointer bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border-indigo-500/25"
+          >
+            <Zap className={`h-3.5 w-3.5 ${syncing ? 'animate-spin text-amber-400' : 'text-indigo-400'}`} />
+            {syncing ? 'Syncing...' : 'Sync Social Data'}
+          </button>
+
           {/* Export PDF */}
           <button
             onClick={handleExportPDF}
@@ -527,8 +666,8 @@ export default function AnalyticsPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all hover:shadow-xs disabled:opacity-50 cursor-pointer"
             style={{ borderColor: 'var(--border-default)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
           >
-            <FileText className={`h-3.5 w-3.5 ${downloadingPdf ? 'animate-bounce' : ''}`} style={{ color: '#EF4444' }} />
-            {downloadingPdf ? 'Generating PDF…' : 'Export PDF'}
+            <FileText className={`h-3.5 w-3.5 ${downloadingPdf ? 'animate-bounce text-red-400' : 'text-red-500'}`} />
+            {downloadingPdf ? 'PDF…' : 'PDF'}
           </button>
 
           {/* Export Excel */}
@@ -538,14 +677,20 @@ export default function AnalyticsPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all hover:shadow-xs disabled:opacity-50 cursor-pointer"
             style={{ borderColor: 'var(--border-default)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
           >
-            <FileSpreadsheet className={`h-3.5 w-3.5 ${downloadingExcel ? 'animate-bounce' : ''}`} style={{ color: '#22C55E' }} />
-            {downloadingExcel ? 'Generating Excel…' : 'Export Excel'}
+            <FileSpreadsheet className={`h-3.5 w-3.5 ${downloadingExcel ? 'animate-bounce text-emerald-400' : 'text-emerald-500'}`} />
+            {downloadingExcel ? 'Excel…' : 'Excel'}
           </button>
 
           <button
-            onClick={fetchAll}
+            onClick={() => {
+              fetchOverview();
+              if (activeTab === 'engagement') fetchEngagement();
+              if (activeTab === 'audience') fetchAudience();
+              if (activeTab === 'roi') fetchROI();
+              if (activeTab === 'comparison') runComparison();
+            }}
             disabled={loading}
-            title="Refresh analytics"
+            title="Refresh"
             className="h-9 w-9 flex items-center justify-center rounded-xl border transition-all hover:shadow-sm disabled:opacity-50 cursor-pointer"
             style={{ borderColor: 'var(--border-default)', background: 'var(--bg-card)' }}
           >
@@ -554,324 +699,706 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* ── Engagement Info Banner ── */}
-      {overview?.engagement && !overview.engagement.available && (
-        <div
-          className="flex items-start gap-3 rounded-xl border p-4"
-          style={{ background: 'rgba(59,130,246,0.06)', borderColor: 'rgba(59,130,246,0.2)' }}
-        >
-          <Info className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: '#3B82F6' }} />
-          <div>
-            <p className="text-sm font-semibold" style={{ color: '#3B82F6' }}>External Engagement Metrics Unavailable</p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{overview.engagement.reason}</p>
+      {/* Sync notice banner */}
+      {syncNotice && (
+        <div className="flex items-center justify-between p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-xs text-indigo-300">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>{syncNotice}</span>
           </div>
+          <button onClick={() => setSyncNotice(null)} className="text-gray-400 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* ── KPI Stat Row ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <StatCard
-          loading={loading}
-          icon={Send}
-          label={`Posts (last ${days}d)`}
-          value={posts.period_total}
-          iconColor="#22C55E"
-          iconBg="rgba(34,197,94,0.12)"
-        />
-        <StatCard
-          loading={loading}
-          icon={CheckCircle2}
-          label="Published"
-          value={posts.published}
-          sub={posts.success_rate != null ? `${posts.success_rate}% success rate` : undefined}
-          iconColor="#22C55E"
-          iconBg="rgba(34,197,94,0.12)"
-        />
-        <StatCard
-          loading={loading}
-          icon={Clock}
-          label="Scheduled"
-          value={posts.scheduled}
-          iconColor="#3B82F6"
-          iconBg="rgba(59,130,246,0.12)"
-        />
-        <StatCard
-          loading={loading}
-          icon={Layers}
-          label="Active Campaigns"
-          value={overview?.campaigns?.active}
-          sub={overview?.campaigns?.total ? `of ${overview.campaigns.total} total` : undefined}
-          iconColor="#A855F7"
-          iconBg="rgba(168,85,247,0.12)"
-        />
-        <StatCard
-          loading={loading}
-          icon={Share2}
-          label="Connected Accounts"
-          value={overview?.accounts?.connected}
-          sub={overview?.accounts?.total ? `of ${overview.accounts.total} total` : undefined}
-          iconColor="#F59E0B"
-          iconBg="rgba(245,158,11,0.12)"
-        />
-      </div>
-
-      {/* ── Lifetime Stats Row ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* ── Navigation Tabs (Milestone 3) ── */}
+      <div className="flex border-b border-[var(--border-default)] gap-2 overflow-x-auto pb-px">
         {[
-          { label: 'Lifetime Posts', value: posts.lifetime_total, icon: Activity, color: '#22C55E' },
-          { label: 'Lifetime Published', value: posts.lifetime_published, icon: CheckCircle2, color: '#22C55E' },
-          { label: 'Draft Posts', value: posts.draft, icon: BarChart3, color: '#94A3B8' },
-          { label: 'Failed Posts', value: posts.failed, icon: XCircle, color: '#EF4444' },
-        ].map(s => (
-          <StatCard
-            key={s.label}
-            loading={loading}
-            icon={s.icon}
-            label={s.label}
-            value={s.value}
-            iconColor={s.color}
-            iconBg={`${s.color}1a`}
-          />
+          { id: 'overview', label: 'Overview', icon: BarChart3 },
+          { id: 'engagement', label: 'Engagement Analytics', icon: Zap },
+          { id: 'audience', label: 'Audience Growth', icon: Activity },
+          { id: 'roi', label: 'Marketing ROI', icon: TrendingUp },
+          { id: 'comparison', label: 'Campaign Comparison', icon: Layers },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === tab.id
+                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
+                : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <tab.icon className="w-4 h-4" />
+            {tab.label}
+          </button>
         ))}
       </div>
 
-      {/* ── Charts Row ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Published Trend */}
-        <div className="lg:col-span-2">
-          <SectionCard
-            title="Published Posts Trend"
-            subtitle={`Daily published post count — last ${days} days`}
-            icon={TrendingUp}
-          >
-            {loading ? (
-              <Skeleton className="h-32 w-full rounded-xl" />
-            ) : overview?.daily_published_trend?.length ? (
-              <LineChart
-                data={overview.daily_published_trend}
-                height={130}
-                color="#22C55E"
-                label="published"
-              />
-            ) : (
-              <p className="text-sm py-8 text-center" style={{ color: 'var(--text-muted)' }}>
-                No published posts in this period.
-              </p>
-            )}
-          </SectionCard>
-        </div>
-
-        {/* Platform Breakdown */}
-        <div>
-          <SectionCard title="Posts by Platform" subtitle="Current period" icon={Globe}>
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map(i => <Skeleton key={i} className="h-6 w-full rounded" />)}
-              </div>
-            ) : platformData.length ? (
-              <HBarChart data={platformData} />
-            ) : (
-              <p className="text-sm py-4 text-center" style={{ color: 'var(--text-muted)' }}>
-                No platform data yet.
-              </p>
-            )}
-          </SectionCard>
-        </div>
-      </div>
-
-      {/* ── Status Breakdown + Account Health ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Post Status Breakdown */}
-        <SectionCard title="Post Status Breakdown" subtitle={`Last ${days} days`} icon={BarChart3}>
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-6 w-full rounded" />)}
-            </div>
-          ) : (
-            <HBarChart
-              data={Object.entries(STATUS_META).map(([key, meta]) => ({
-                platform: key,
-                label: meta.label,
-                color: meta.color,
-                count: posts[key] ?? 0,
-              })).filter(d => d.count > 0)}
+      {/* ═══════════════════════════════════════════════════════════
+          TAB 1: OVERVIEW
+      ═══════════════════════════════════════════════════════════ */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          {/* KPI Stat Row */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <StatCard
+              loading={loading}
+              icon={Send}
+              label={`Posts (last ${days}d)`}
+              value={posts.period_total}
+              iconColor="#22C55E"
+              iconBg="rgba(34,197,94,0.12)"
             />
-          )}
-        </SectionCard>
+            <StatCard
+              loading={loading}
+              icon={CheckCircle2}
+              label="Published"
+              value={posts.published}
+              sub={posts.success_rate != null ? `${posts.success_rate}% success rate` : undefined}
+              iconColor="#22C55E"
+              iconBg="rgba(34,197,94,0.12)"
+            />
+            <StatCard
+              loading={loading}
+              icon={Clock}
+              label="Scheduled"
+              value={posts.scheduled}
+              iconColor="#3B82F6"
+              iconBg="rgba(59,130,246,0.12)"
+            />
+            <StatCard
+              loading={loading}
+              icon={Layers}
+              label="Active Campaigns"
+              value={overview?.campaigns?.active}
+              sub={overview?.campaigns?.total ? `of ${overview.campaigns.total} total` : undefined}
+              iconColor="#A855F7"
+              iconBg="rgba(168,85,247,0.12)"
+            />
+            <StatCard
+              loading={loading}
+              icon={Share2}
+              label="Connected Accounts"
+              value={overview?.accounts?.connected}
+              sub={overview?.accounts?.total ? `of ${overview.accounts.total} total` : undefined}
+              iconColor="#F59E0B"
+              iconBg="rgba(245,158,11,0.12)"
+            />
+          </div>
 
-        {/* Account Health */}
-        <SectionCard title="Account Health" subtitle="Connected social accounts" icon={Share2}>
-          {loading ? (
-            <Skeleton className="h-28 w-full rounded-xl" />
-          ) : (
-            <div className="space-y-5">
-              <DonutChart
-                connected={overview?.accounts?.connected ?? 0}
-                expired={overview?.accounts?.expired ?? 0}
-                error={overview?.accounts?.error ?? 0}
-              />
-              {overview?.accounts?.by_platform?.length > 0 && (
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2">
+              <SectionCard
+                title="Published Posts Trend"
+                subtitle={`Daily published post count — last ${days} days`}
+                icon={TrendingUp}
+              >
+                {loading ? (
+                  <Skeleton className="h-32 w-full rounded-xl" />
+                ) : overview?.daily_published_trend?.length ? (
+                  <LineChart
+                    data={overview.daily_published_trend}
+                    height={130}
+                    color="#22C55E"
+                    label="published"
+                  />
+                ) : (
+                  <p className="text-sm py-8 text-center" style={{ color: 'var(--text-muted)' }}>
+                    No published posts in this period.
+                  </p>
+                )}
+              </SectionCard>
+            </div>
+
+            <div>
+              <SectionCard title="Posts by Platform" subtitle="Current period" icon={Globe}>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => <Skeleton key={i} className="h-6 w-full rounded" />)}
+                  </div>
+                ) : platformData.length ? (
+                  <HBarChart data={platformData} />
+                ) : (
+                  <p className="text-sm py-4 text-center" style={{ color: 'var(--text-muted)' }}>
+                    No platform data yet.
+                  </p>
+                )}
+              </SectionCard>
+            </div>
+          </div>
+
+          {/* Status Breakdown + Account Health */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <SectionCard title="Post Status Breakdown" subtitle={`Last ${days} days`} icon={BarChart3}>
+              {loading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-6 w-full rounded" />)}
+                </div>
+              ) : (
                 <HBarChart
-                  data={(overview.accounts.by_platform ?? []).map(d => ({
-                    ...d,
-                    label: PLATFORM_META[d.platform]?.label || d.platform,
-                    color: PLATFORM_META[d.platform]?.color || '#64748B',
-                  }))}
+                  data={Object.entries(STATUS_META).map(([key, meta]) => ({
+                    platform: key,
+                    label: meta.label,
+                    color: meta.color,
+                    count: posts[key] ?? 0,
+                  })).filter(d => d.count > 0)}
                 />
               )}
-            </div>
-          )}
-        </SectionCard>
-      </div>
+            </SectionCard>
 
-      {/* ── Campaign Performance Table ── */}
-      <SectionCard
-        title="Campaign Performance"
-        subtitle="Publishing metrics per campaign (last 20)"
-        icon={Layers}
-      >
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full rounded-xl" />)}
+            <SectionCard title="Account Health" subtitle="Connected social accounts" icon={Share2}>
+              {loading ? (
+                <Skeleton className="h-28 w-full rounded-xl" />
+              ) : (
+                <div className="space-y-5">
+                  <DonutChart
+                    connected={overview?.accounts?.connected ?? 0}
+                    expired={overview?.accounts?.expired ?? 0}
+                    error={overview?.accounts?.error ?? 0}
+                  />
+                </div>
+              )}
+            </SectionCard>
           </div>
-        ) : campaignRows.length === 0 ? (
-          <div className="py-10 text-center">
-            <Layers className="h-10 w-10 mx-auto mb-3 opacity-20" />
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No campaigns found in this workspace.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-default)' }}>
-                  {['Campaign', 'Status', 'Platforms', 'Total Posts', 'Published', 'Scheduled', 'Failed', 'Publish Rate'].map(h => (
-                    <th
-                      key={h}
-                      className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-                {campaignRows.map(row => {
-                  const statusMeta = CAMPAIGN_STATUS_META[row.status] || { label: row.status, variant: 'neutral' };
-                  const rateColor = row.publish_rate >= 75 ? '#22C55E' : row.publish_rate >= 40 ? '#F59E0B' : '#EF4444';
-                  return (
-                    <tr
-                      key={row.campaign_id}
-                      className="transition-colors hover:bg-black/3 dark:hover:bg-white/3"
-                    >
-                      <td className="px-3 py-3 font-medium max-w-[180px] truncate" style={{ color: 'var(--text-primary)' }}>
-                        {row.name}
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge variant={statusMeta.variant} size="xs" showDot={false}>
-                          {statusMeta.label}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {(row.target_platforms ?? []).map(p => (
-                            <span
-                              key={p}
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border"
-                              style={{
-                                color: PLATFORM_META[p]?.color || '#64748B',
-                                borderColor: `${PLATFORM_META[p]?.color || '#64748B'}30`,
-                                background: `${PLATFORM_META[p]?.color || '#64748B'}10`,
-                              }}
-                            >
-                              {PLATFORM_META[p]?.label || p}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-center font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        {row.total_posts}
-                      </td>
-                      <td className="px-3 py-3 text-center font-semibold" style={{ color: '#22C55E' }}>
-                        {row.published_posts}
-                      </td>
-                      <td className="px-3 py-3 text-center font-semibold" style={{ color: '#3B82F6' }}>
-                        {row.scheduled_posts}
-                      </td>
-                      <td className="px-3 py-3 text-center font-semibold" style={{ color: '#EF4444' }}>
-                        {row.failed_posts}
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="flex-1 rounded-full overflow-hidden"
-                            style={{ height: 6, background: 'var(--border-subtle)', minWidth: 48 }}
-                          >
-                            <div
-                              className="h-full rounded-full"
-                              style={{ width: `${row.publish_rate}%`, background: rateColor }}
-                            />
-                          </div>
-                          <span className="text-xs font-bold w-10 text-right flex-shrink-0" style={{ color: rateColor }}>
-                            {row.publish_rate}%
-                          </span>
-                        </div>
-                      </td>
+
+          {/* Campaign Performance Table */}
+          <SectionCard
+            title="Campaign Performance"
+            subtitle="Publishing metrics per campaign"
+            icon={Layers}
+          >
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full rounded-xl" />)}
+              </div>
+            ) : campaignRows.length === 0 ? (
+              <div className="py-10 text-center">
+                <Layers className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No campaigns found in this workspace.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-default)' }}>
+                      {['Campaign', 'Status', 'Platforms', 'Total Posts', 'Published', 'Scheduled', 'Publish Rate'].map(h => (
+                        <th key={h} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-subtle)] text-gray-200">
+                    {campaignRows.map(row => (
+                      <tr key={row.campaign_id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-3 py-3 font-medium text-[var(--text-primary)]">{row.name}</td>
+                        <td className="px-3 py-3">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-500/10 text-gray-300 font-semibold border border-gray-500/20">
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {(row.target_platforms ?? []).map(p => (
+                              <span key={p} className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-[var(--sp-surface-2)] text-gray-300 border border-[var(--sp-border)]">
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 font-semibold">{row.total_posts}</td>
+                        <td className="px-3 py-3 text-emerald-400 font-semibold">{row.published_posts}</td>
+                        <td className="px-3 py-3 text-blue-400 font-semibold">{row.scheduled_posts}</td>
+                        <td className="px-3 py-3 font-bold text-indigo-400">{row.publish_rate}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
+          TAB 2: ENGAGEMENT ANALYTICS
+      ═══════════════════════════════════════════════════════════ */}
+      {activeTab === 'engagement' && (
+        <div className="space-y-6">
+          {/* Top KPI Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard
+              loading={engagementLoading}
+              icon={Eye}
+              label={`Total Impressions (${days}d)`}
+              value={engagement?.totals?.impressions?.toLocaleString() ?? '0'}
+              iconColor="#3B82F6"
+              iconBg="rgba(59,130,246,0.12)"
+            />
+            <StatCard
+              loading={engagementLoading}
+              icon={Users}
+              label="Audience Reach"
+              value={engagement?.totals?.reach?.toLocaleString() ?? '0'}
+              iconColor="#A855F7"
+              iconBg="rgba(168,85,247,0.12)"
+            />
+            <StatCard
+              loading={engagementLoading}
+              icon={ThumbsUp}
+              label="Total Engagements"
+              value={engagement?.totals?.engagements?.toLocaleString() ?? '0'}
+              sub={`${(engagement?.totals?.likes || 0).toLocaleString()} likes · ${(engagement?.totals?.comments || 0).toLocaleString()} comments`}
+              iconColor="#22C55E"
+              iconBg="rgba(34,197,94,0.12)"
+            />
+            <StatCard
+              loading={engagementLoading}
+              icon={TrendingUp}
+              label="Engagement Rate"
+              value={`${(engagement?.totals?.engagement_rate || 0).toFixed(2)}%`}
+              sub="Engagements / Impressions"
+              iconColor="#F59E0B"
+              iconBg="rgba(245,158,11,0.12)"
+            />
+          </div>
+
+          {/* Interactions Breakdown */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-4 rounded-xl border border-[var(--sp-border)] bg-[var(--sp-card)]">
+              <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                <ThumbsUp className="w-3.5 h-3.5 text-blue-400" /> Likes & Reactions
+              </span>
+              <p className="text-xl font-bold text-[var(--sp-text)] mt-1">
+                {(engagement?.totals?.likes || 0).toLocaleString()}
+              </p>
+            </div>
+            <div className="p-4 rounded-xl border border-[var(--sp-border)] bg-[var(--sp-card)]">
+              <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" /> Comments & Replies
+              </span>
+              <p className="text-xl font-bold text-[var(--sp-text)] mt-1">
+                {(engagement?.totals?.comments || 0).toLocaleString()}
+              </p>
+            </div>
+            <div className="p-4 rounded-xl border border-[var(--sp-border)] bg-[var(--sp-card)]">
+              <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                <Share2 className="w-3.5 h-3.5 text-purple-400" /> Shares & Retweets
+              </span>
+              <p className="text-xl font-bold text-[var(--sp-text)] mt-1">
+                {(engagement?.totals?.shares || 0).toLocaleString()}
+              </p>
+            </div>
+            <div className="p-4 rounded-xl border border-[var(--sp-border)] bg-[var(--sp-card)]">
+              <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                <MousePointer className="w-3.5 h-3.5 text-amber-400" /> Clicks & Link Taps
+              </span>
+              <p className="text-xl font-bold text-[var(--sp-text)] mt-1">
+                {(engagement?.totals?.clicks || 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          {/* Platform Engagement Breakdown */}
+          <SectionCard
+            title="Platform Engagement Breakdown"
+            subtitle="Normalized metrics across connected social networks"
+            icon={Globe}
+          >
+            {engagementLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-full rounded" />)}
+              </div>
+            ) : Object.keys(engagement?.by_platform || {}).length === 0 ? (
+              <div className="py-8 text-center text-sm text-gray-400">
+                No platform engagement recorded for this period yet. Click &quot;Sync Social Data&quot; to ingest latest metrics.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[var(--sp-surface-2)] text-gray-400 uppercase font-semibold">
+                    <tr>
+                      <th className="py-2.5 px-3">Platform</th>
+                      <th className="py-2.5 px-3">Impressions</th>
+                      <th className="py-2.5 px-3">Reach</th>
+                      <th className="py-2.5 px-3">Likes</th>
+                      <th className="py-2.5 px-3">Comments</th>
+                      <th className="py-2.5 px-3">Shares</th>
+                      <th className="py-2.5 px-3">Clicks</th>
+                      <th className="py-2.5 px-3">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--sp-border)] text-gray-200">
+                    {Object.entries(engagement?.by_platform || {}).map(([plat, m]) => (
+                      <tr key={plat} className="hover:bg-white/5 transition-colors">
+                        <td className="py-3 px-3 font-bold uppercase text-[var(--sp-text)]">{plat}</td>
+                        <td className="py-3 px-3 font-medium">{(m.impressions || 0).toLocaleString()}</td>
+                        <td className="py-3 px-3 font-medium">{(m.reach || 0).toLocaleString()}</td>
+                        <td className="py-3 px-3">{(m.likes || 0).toLocaleString()}</td>
+                        <td className="py-3 px-3">{(m.comments || 0).toLocaleString()}</td>
+                        <td className="py-3 px-3">{(m.shares || 0).toLocaleString()}</td>
+                        <td className="py-3 px-3">{(m.clicks || 0).toLocaleString()}</td>
+                        <td className="py-3 px-3 font-bold text-indigo-400">
+                          {(m.engagement_rate || 0).toFixed(2)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
+          TAB 3: AUDIENCE GROWTH
+      ═══════════════════════════════════════════════════════════ */}
+      {activeTab === 'audience' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard
+              loading={audienceLoading}
+              icon={Users}
+              label="Total Audience"
+              value={(audience?.total_followers || 0).toLocaleString()}
+              sub="Across all connected accounts"
+              iconColor="#3B82F6"
+              iconBg="rgba(59,130,246,0.12)"
+            />
+            <StatCard
+              loading={audienceLoading}
+              icon={TrendingUp}
+              label={`Net Audience Growth (${days}d)`}
+              value={
+                audience?.net_growth != null
+                  ? (audience.net_growth >= 0 ? `+${audience.net_growth.toLocaleString()}` : audience.net_growth.toLocaleString())
+                  : '0'
+              }
+              sub={`${(audience?.growth_rate || 0).toFixed(2)}% growth rate`}
+              iconColor="#22C55E"
+              iconBg="rgba(34,197,94,0.12)"
+            />
+            <StatCard
+              loading={audienceLoading}
+              icon={Activity}
+              label="Connected Social Channels"
+              value={audience?.accounts?.length || 0}
+              sub="Active profile syncs"
+              iconColor="#A855F7"
+              iconBg="rgba(168,85,247,0.12)"
+            />
+          </div>
+
+          {/* Connected Accounts Audience Table */}
+          <SectionCard
+            title="Connected Accounts & Audience Distribution"
+            subtitle="Real follower counts and historical trajectory"
+            icon={Globe}
+          >
+            {audienceLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-full rounded" />)}
+              </div>
+            ) : (audience?.accounts || []).length === 0 ? (
+              <div className="py-8 text-center text-sm text-gray-400">
+                No active social accounts with audience tracking found. Connect accounts in Account Management.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[var(--sp-surface-2)] text-gray-400 uppercase font-semibold">
+                    <tr>
+                      <th className="py-2.5 px-3">Account Name</th>
+                      <th className="py-2.5 px-3">Platform</th>
+                      <th className="py-2.5 px-3">Followers / Subscribers</th>
+                      <th className="py-2.5 px-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--sp-border)] text-gray-200">
+                    {(audience?.accounts || []).map((acc) => (
+                      <tr key={acc.account_id} className="hover:bg-white/5 transition-colors">
+                        <td className="py-3 px-3 font-bold text-[var(--sp-text)]">{acc.account_name}</td>
+                        <td className="py-3 px-3 uppercase text-gray-400 font-semibold">{acc.platform}</td>
+                        <td className="py-3 px-3 font-bold text-indigo-400">
+                          {(acc.current_followers || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            Active Sync
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
+          TAB 4: MARKETING ROI
+      ═══════════════════════════════════════════════════════════ */}
+      {activeTab === 'roi' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard
+              loading={roiLoading}
+              icon={DollarSign}
+              label="Total Marketing Spend"
+              value={`$${(roi?.total_cost || 0).toLocaleString()}`}
+              sub="Across all campaigns"
+              iconColor="#3B82F6"
+              iconBg="rgba(59,130,246,0.12)"
+            />
+            <StatCard
+              loading={roiLoading}
+              icon={TrendingUp}
+              label="Attributed Revenue"
+              value={`$${(roi?.total_return || 0).toLocaleString()}`}
+              sub="Marketing value generated"
+              iconColor="#22C55E"
+              iconBg="rgba(34,197,94,0.12)"
+            />
+            <StatCard
+              loading={roiLoading}
+              icon={Zap}
+              label="Aggregate Marketing ROI"
+              value={roi ? `${roi.overall_roi >= 0 ? `+${roi.overall_roi.toFixed(1)}%` : `${roi.overall_roi.toFixed(1)}%`}` : '0.0%'}
+              sub={roi?.overall_roi >= 0 ? 'Net Positive Return' : 'Net Loss'}
+              iconColor={roi?.overall_roi >= 0 ? '#22C55E' : '#EF4444'}
+              iconBg={roi?.overall_roi >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)'}
+            />
+            <StatCard
+              loading={roiLoading}
+              icon={Activity}
+              label="Cost per Engagement (CPE)"
+              value={roi?.cpe ? `$${roi.cpe.toFixed(2)}` : '—'}
+              sub={roi?.cpc ? `CPC: $${roi.cpc.toFixed(2)}` : undefined}
+              iconColor="#F59E0B"
+              iconBg="rgba(245,158,11,0.12)"
+            />
+          </div>
+
+          {/* Campaign ROI Performance Table */}
+          <SectionCard
+            title="Campaign ROI & Financial Returns"
+            subtitle="Calculated marketing ROI, Cost per Engagement, and Cost per Click per campaign"
+            icon={TrendingUp}
+          >
+            {roiLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-full rounded" />)}
+              </div>
+            ) : (roi?.campaigns || []).length === 0 ? (
+              <div className="py-8 text-center text-sm text-gray-400">
+                No campaign financial data found. Assign budgets and revenue to campaigns in Campaign Management.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-[var(--sp-surface-2)] text-gray-400 uppercase font-semibold">
+                    <tr>
+                      <th className="py-2.5 px-3">Campaign</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3">Budget ($)</th>
+                      <th className="py-2.5 px-3">Revenue ($)</th>
+                      <th className="py-2.5 px-3">Net Profit ($)</th>
+                      <th className="py-2.5 px-3">ROI %</th>
+                      <th className="py-2.5 px-3">CPE ($)</th>
+                      <th className="py-2.5 px-3">CPC ($)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--sp-border)] text-gray-200">
+                    {(roi?.campaigns || []).map((c) => {
+                      const net = (c.revenue || 0) - (c.cost || 0);
+                      const isPositive = (c.roi_percentage || 0) >= 0;
+                      return (
+                        <tr key={c.campaign_id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-3 px-3 font-bold text-[var(--sp-text)]">{c.name}</td>
+                          <td className="py-3 px-3 uppercase text-gray-400 font-semibold">{c.status}</td>
+                          <td className="py-3 px-3 font-medium">${(c.cost || 0).toLocaleString()}</td>
+                          <td className="py-3 px-3 font-medium text-emerald-400">${(c.revenue || 0).toLocaleString()}</td>
+                          <td className={`py-3 px-3 font-bold ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            ${net.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${
+                              isPositive ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            }`}>
+                              {isPositive ? `+${(c.roi_percentage || 0).toFixed(1)}%` : `${(c.roi_percentage || 0).toFixed(1)}%`}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-medium">{c.cpe != null ? `$${c.cpe.toFixed(2)}` : '—'}</td>
+                          <td className="py-3 px-3 font-medium">{c.cpc != null ? `$${c.cpc.toFixed(2)}` : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
+          TAB 5: CAMPAIGN COMPARISON
+      ═══════════════════════════════════════════════════════════ */}
+      {activeTab === 'comparison' && (
+        <div className="space-y-6">
+          <SectionCard
+            title="Select Campaigns to Compare"
+            subtitle="Choose 2 or more campaigns to benchmark cross-platform performance"
+            icon={Layers}
+            action={
+              selectedCompIds.length >= 2 ? (
+                <button
+                  onClick={() => runComparison()}
+                  disabled={compLoading}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                  {compLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Recalculate Comparison
+                </button>
+              ) : null
+            }
+          >
+            {allCampaigns.length === 0 ? (
+              <p className="text-xs text-gray-400">No campaigns found in workspace.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2.5">
+                {allCampaigns.map(c => {
+                  const isChecked = selectedCompIds.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => toggleComparisonCampaign(c.id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                        isChecked
+                          ? 'border-indigo-500 bg-indigo-600/15 text-indigo-300 ring-1 ring-indigo-500/30'
+                          : 'border-[var(--sp-border)] bg-[var(--sp-surface-2)] text-gray-400 hover:text-gray-200'
+                      }`}
+                    >
+                      <span className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] ${
+                        isChecked ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-500'
+                      }`}>
+                        {isChecked && '✓'}
+                      </span>
+                      <span>{c.name}</span>
+                    </button>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
+              </div>
+            )}
+          </SectionCard>
 
-      {/* ── Post Activity Timeline (multi-status) ── */}
-      <SectionCard
-        title="Post Activity Timeline"
-        subtitle={`All post status changes — last ${days} days`}
-        icon={Activity}
-      >
-        {loading ? (
-          <Skeleton className="h-32 w-full rounded-xl" />
-        ) : timeline?.series?.length ? (
-          <div className="space-y-4">
-            {/* Legend */}
-            <div className="flex flex-wrap gap-4">
-              {(timeline.statuses ?? []).filter(st => {
-                const total = (timeline.series ?? []).reduce((a, d) => a + (d[st] ?? 0), 0);
-                return total > 0;
-              }).map(st => {
-                const meta = STATUS_META[st] || { label: st, color: '#64748B' };
-                return (
-                  <div key={st} className="flex items-center gap-1.5 text-xs">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: meta.color }} />
-                    <span style={{ color: 'var(--text-muted)' }}>{meta.label}</span>
-                  </div>
-                );
-              })}
+          {compLoading ? (
+            <div className="flex flex-col items-center justify-center py-16 space-y-3">
+              <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+              <p className="text-sm text-gray-400">Generating comparative analysis...</p>
             </div>
+          ) : compData?.campaigns?.length ? (
+            <div className="space-y-6">
+              {/* Highlight cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {(() => {
+                  const items = compData.campaigns;
+                  const highestROI = [...items].sort((a, b) => b.roi_percentage - a.roi_percentage)[0];
+                  const highestEng = [...items].sort((a, b) => b.total_engagements - a.total_engagements)[0];
+                  const highestReach = [...items].sort((a, b) => b.total_reach - a.total_reach)[0];
+                  return (
+                    <>
+                      <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-1">
+                        <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
+                          <TrendingUp className="w-3.5 h-3.5" /> Highest ROI Leader
+                        </span>
+                        <p className="text-base font-bold text-[var(--sp-text)] truncate">{highestROI?.campaign_name}</p>
+                        <p className="text-xs font-bold text-emerald-400">+{highestROI?.roi_percentage?.toFixed(1)}% ROI</p>
+                      </div>
 
-            {/* Stacked lines — one per status */}
-            {(timeline.statuses ?? []).filter(st => {
-              const total = (timeline.series ?? []).reduce((a, d) => a + (d[st] ?? 0), 0);
-              return total > 0;
-            }).map(st => {
-              const meta = STATUS_META[st] || { label: st, color: '#64748B' };
-              return (
-                <div key={st}>
-                  <p className="text-[11px] mb-1 font-medium" style={{ color: 'var(--text-muted)' }}>{meta.label}</p>
-                  <LineChart data={timeline.series} height={70} color={meta.color} label={st} />
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-sm py-8 text-center" style={{ color: 'var(--text-muted)' }}>
-            No post activity in this period.
-          </p>
-        )}
-      </SectionCard>
+                      <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-1">
+                        <span className="text-xs text-indigo-400 font-semibold flex items-center gap-1">
+                          <ThumbsUp className="w-3.5 h-3.5" /> Engagement Leader
+                        </span>
+                        <p className="text-base font-bold text-[var(--sp-text)] truncate">{highestEng?.campaign_name}</p>
+                        <p className="text-xs font-bold text-indigo-400">{highestEng?.total_engagements?.toLocaleString()} engagements</p>
+                      </div>
+
+                      <div className="p-4 rounded-xl border border-purple-500/30 bg-purple-500/5 space-y-1">
+                        <span className="text-xs text-purple-400 font-semibold flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5" /> Audience Reach Leader
+                        </span>
+                        <p className="text-base font-bold text-[var(--sp-text)] truncate">{highestReach?.campaign_name}</p>
+                        <p className="text-xs font-bold text-purple-400">{highestReach?.total_reach?.toLocaleString()} reached</p>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Comparative Table */}
+              <div className="overflow-x-auto rounded-xl border border-[var(--sp-border)]">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-[var(--sp-surface-2)] text-gray-400 uppercase font-semibold border-b border-[var(--sp-border)]">
+                    <tr>
+                      <th className="py-3 px-4">Campaign</th>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-3">Posts</th>
+                      <th className="py-3 px-3">Impressions</th>
+                      <th className="py-3 px-3">Reach</th>
+                      <th className="py-3 px-3">Engagements</th>
+                      <th className="py-3 px-3">Rate %</th>
+                      <th className="py-3 px-3">Budget</th>
+                      <th className="py-3 px-3">Revenue</th>
+                      <th className="py-3 px-4">ROI %</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--sp-border)] text-gray-200">
+                    {compData.campaigns.map((item) => {
+                      const isPositive = item.roi_percentage >= 0;
+                      return (
+                        <tr key={item.campaign_id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-3 px-4 font-bold text-[var(--sp-text)]">
+                            <div>{item.campaign_name}</div>
+                            {item.objective && (
+                              <div className="text-[10px] text-gray-400 font-normal">{item.objective}</div>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 uppercase text-gray-400 font-semibold">{item.status}</td>
+                          <td className="py-3 px-3">{item.published_posts} / {item.total_posts}</td>
+                          <td className="py-3 px-3 font-medium">{item.total_impressions.toLocaleString()}</td>
+                          <td className="py-3 px-3 font-medium">{item.total_reach.toLocaleString()}</td>
+                          <td className="py-3 px-3 font-bold text-indigo-400">{item.total_engagements.toLocaleString()}</td>
+                          <td className="py-3 px-3 font-semibold">{item.engagement_rate.toFixed(2)}%</td>
+                          <td className="py-3 px-3 font-medium">${item.budget.toLocaleString()}</td>
+                          <td className="py-3 px-3 font-medium text-emerald-400">${item.revenue.toLocaleString()}</td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${
+                              isPositive ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            }`}>
+                              {isPositive ? `+${item.roi_percentage.toFixed(1)}%` : `${item.roi_percentage.toFixed(1)}%`}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="p-8 text-center border border-dashed border-[var(--sp-border)] rounded-xl text-gray-400 text-sm">
+              Select at least 2 campaigns above to generate side-by-side comparative analytics.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -175,6 +175,17 @@ def synchronize_account(db: Session, user: User, account_id: int) -> Dict[str, A
     # Update synchronization timestamp
     now = datetime.now(timezone.utc)
     account.last_synced_at = now
+
+    # Check if remote reported expired token or invalid session
+    if sync_result.get("is_token_expired") or "expired" in sync_result.get("message", "").lower():
+        account.connection_status = SocialAccountStatus.EXPIRED
+    elif sync_result.get("status") == "synchronized":
+        account.connection_status = SocialAccountStatus.CONNECTED
+        if sync_result.get("avatar_url"):
+            current_perms = dict(account.platform_permissions or {})
+            current_perms["avatar_url"] = sync_result["avatar_url"]
+            account.platform_permissions = current_perms
+
     db.commit()
     db.refresh(account)
 
