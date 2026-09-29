@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTeam } from '../context/TeamContext';
-import { accountsAPI, oauthAPI } from '../lib/api';
+import { accountsAPI, oauthAPI, analyticsAPI } from '../lib/api';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -155,14 +155,14 @@ const statCardConfig = [
     unit: 'Online',
   },
   {
-    label: 'Networks Linked',
+    label: 'Total Audience',
     iconClass: 'sp-icon-violet',
-    Icon: Globe,
+    Icon: Users,
     subIcon: Layers,
     subColor: 'text-violet-600 dark:text-violet-400',
-    getValue: (data) => data.distinctPlatforms,
-    getSub: () => '6 adapter integrations',
-    unit: 'of 6',
+    getValue: (data) => data.totalAudience > 0 ? data.totalAudience.toLocaleString() : (data.distinctPlatforms > 0 ? `${data.distinctPlatforms} Networks` : '0'),
+    getSub: (data) => data.totalAudience > 0 ? 'Verified audience count' : `${data.distinctPlatforms} of 6 networks linked`,
+    unit: (data) => data.totalAudience > 0 ? 'Followers' : 'Networks',
   },
   {
     label: 'Token Security',
@@ -183,6 +183,7 @@ export const DashboardOverviewPage = () => {
   const { user } = useAuth();
   const { activeTeamId, activeTeam } = useTeam();
   const [accounts, setAccounts] = useState([]);
+  const [overview, setOverview] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const heroRef = useRef(null);
 
@@ -194,7 +195,17 @@ export const DashboardOverviewPage = () => {
         params.team_id = activeTeamId;
       }
       const res = await accountsAPI.list(params);
-      setAccounts(res.data);
+      const accList = res.data || [];
+      setAccounts(accList);
+
+      if (activeTeamId) {
+        try {
+          const ovRes = await analyticsAPI.getOverview(activeTeamId);
+          setOverview(ovRes.data);
+        } catch (ovErr) {
+          console.warn('Analytics overview deferred:', ovErr);
+        }
+      }
     } catch (err) {
       console.error('Failed to load accounts for overview:', err);
     } finally {
@@ -254,7 +265,8 @@ export const DashboardOverviewPage = () => {
   const distinctPlatforms = new Set(accounts.map((a) => a.platform)).size;
   const validTokensCount  = accounts.filter((a) => !a.is_token_expired).length;
   const activeRate        = accounts.length > 0 ? Math.round((connectedCount / accounts.length) * 100) : 0;
-  const data              = { accounts, connectedCount, distinctPlatforms, validTokensCount, activeRate };
+  const totalAudience     = accounts.reduce((sum, a) => sum + (Number(a.platform_permissions?.follower_count) || 0), 0);
+  const data              = { accounts, connectedCount, distinctPlatforms, validTokensCount, activeRate, totalAudience };
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -342,8 +354,8 @@ export const DashboardOverviewPage = () => {
               style={{ background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(16px)' }}
             >
               {[
-                { label: 'Scheduled Posts',    value: `${accounts.length * 4} queued`,      Icon: Calendar },
-                { label: 'Connected Channels', value: `${connectedCount} / 6 linked`, Icon: Globe },
+                { label: 'Scheduled Posts',    value: overview?.posts?.scheduled !== undefined ? `${overview.posts.scheduled} queued` : `${accounts.length > 0 ? connectedCount + ' channels active' : '0 queued'}`, Icon: Calendar },
+                { label: 'Total Audience',     value: totalAudience > 0 ? totalAudience.toLocaleString() : `${connectedCount} / 6 linked`, Icon: Users },
                 { label: 'Security Status',    value: 'Protected',             Icon: ShieldCheck, highlight: true },
                 { label: 'Active Workspace',   value: activeTeam?.name || 'Personal', Icon: Users },
               ].map(({ label, value, Icon, highlight }) => (
@@ -394,7 +406,7 @@ export const DashboardOverviewPage = () => {
                       {cfg.getValue(data)}
                     </span>
                     <span className="text-xs font-medium" style={{ color: 'var(--sp-text-muted)' }}>
-                      {cfg.unit}
+                      {typeof cfg.unit === 'function' ? cfg.unit(data) : cfg.unit}
                     </span>
                   </div>
                   <div className="mt-1.5 flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--sp-primary)' }}>
@@ -576,10 +588,10 @@ export const DashboardOverviewPage = () => {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--sp-border)' }}>
-                  {['Account', 'Platform', 'Status', 'Last Synced', 'Action'].map((h, i) => (
+                  {['Account', 'Platform', 'Status', 'Audience', 'Last Synced', 'Action'].map((h, i) => (
                     <th
                       key={h}
-                      className={`py-3 px-3 text-[10px] font-bold uppercase tracking-widest ${i === 4 ? 'text-right' : ''}`}
+                      className={`py-3 px-3 text-[10px] font-bold uppercase tracking-widest ${i === 5 ? 'text-right' : ''}`}
                       style={{ color: 'var(--sp-text-muted)' }}
                     >
                       {h}
@@ -629,13 +641,24 @@ export const DashboardOverviewPage = () => {
                       </td>
                       <td className="py-3.5 px-3">
                         <Badge
-                          variant={acc.connection_status === 'connected' ? (acc.is_token_expired ? 'warning' : 'success') : 'danger'}
+                          variant={
+                            acc.connection_status === 'connected'
+                              ? (acc.is_token_expired ? 'warning' : 'success')
+                              : (acc.connection_status === 'expired' ? 'warning' : 'danger')
+                          }
                           size="xs"
                         >
-                          {acc.connection_status === 'connected' ? (acc.is_token_expired ? 'Expired' : 'Connected') : (acc.connection_status === 'revoked' ? 'Revoked' : 'Disconnected')}
+                          {acc.connection_status === 'connected'
+                            ? (acc.is_token_expired ? 'Expired' : 'Connected')
+                            : (acc.connection_status === 'expired' ? 'Expired' : (acc.connection_status === 'revoked' ? 'Revoked' : 'Disconnected'))}
                         </Badge>
                       </td>
-                       <td className="py-3.5 px-3" style={{ color: 'var(--sp-text-muted)' }}>
+                      <td className="py-3.5 px-3 font-semibold" style={{ color: 'var(--sp-text)' }}>
+                        {acc.platform_permissions?.follower_count !== undefined && acc.platform_permissions?.follower_count !== null
+                          ? Number(acc.platform_permissions.follower_count).toLocaleString()
+                          : '—'}
+                      </td>
+                      <td className="py-3.5 px-3" style={{ color: 'var(--sp-text-muted)' }}>
                         {acc.last_synced_at
                           ? new Date(acc.last_synced_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                           : 'Not synced'}

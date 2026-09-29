@@ -392,12 +392,35 @@ export const AccountsPage = () => {
                       </div>
                     </div>
                     <Badge
-                      variant={isConnected ? (isExpired ? 'warning' : 'success') : 'danger'}
+                      variant={
+                        account.connection_status === 'connected'
+                          ? (isExpired ? 'warning' : 'success')
+                          : (account.connection_status === 'expired' ? 'warning' : 'danger')
+                      }
                       size="xs"
                     >
-                      {isConnected ? (isExpired ? 'Expired' : 'Connected') : 'Revoked'}
+                      {account.connection_status === 'connected'
+                        ? (isExpired ? 'Expired' : 'Connected')
+                        : (account.connection_status === 'expired' ? 'Expired' : (account.connection_status === 'revoked' ? 'Revoked' : 'Disconnected'))}
                     </Badge>
                   </div>
+
+                  {/* Expired Token Warning & Reconnect CTA */}
+                  {(account.connection_status === 'expired' || isExpired) && (
+                    <div className="mt-3 flex items-center justify-between rounded-xl bg-amber-500/10 p-2.5 text-xs text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                        <span className="font-medium text-[11px]">Token expired. Reconnect required.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleInitiateOAuth(account.platform)}
+                        className="text-[11px] font-bold text-amber-700 dark:text-amber-300 underline hover:no-underline cursor-pointer"
+                      >
+                        Reconnect
+                      </button>
+                    </div>
+                  )}
 
                   {/* Account Metadata */}
                   <div className="mt-4 space-y-2 rounded-xl p-3.5 border text-[11px]" style={{ background: 'var(--sp-surface-2)', borderColor: 'var(--sp-border)' }}>
@@ -407,6 +430,22 @@ export const AccountsPage = () => {
                         {account.platform}
                       </span>
                     </div>
+                    {account.platform_permissions?.follower_count !== undefined && account.platform_permissions?.follower_count !== null && (
+                      <div className="flex justify-between text-slate-500">
+                        <span>Audience / Followers:</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                          {Number(account.platform_permissions.follower_count).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    {account.platform_permissions?.post_count !== undefined && account.platform_permissions?.post_count !== null && (
+                      <div className="flex justify-between text-slate-500">
+                        <span>Total Posts:</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                          {Number(account.platform_permissions.post_count).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-slate-500">
                       <span>Last Sync:</span>
                       <span className="font-medium text-slate-700 dark:text-slate-300">
