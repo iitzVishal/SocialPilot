@@ -306,6 +306,12 @@ async def connect_facebook_page(
         team_id=effective_team_id
     )
     fb_account = social_account_service.connect_account(db, current_user, fb_account_in)
+    # Automatic initial synchronization for newly connected Facebook Page
+    try:
+        social_account_service.synchronize_account(db, current_user, fb_account.id)
+        db.refresh(fb_account)
+    except Exception as e:
+        logger.warning(f"Initial sync for Facebook Page {fb_account.id} failed: {e}")
 
     # If user opted to connect linked Instagram Professional account
     ig_account = None
@@ -338,6 +344,12 @@ async def connect_facebook_page(
             team_id=effective_team_id
         )
         ig_account = social_account_service.connect_account(db, current_user, ig_account_in)
+        # Automatic initial synchronization for linked Instagram account
+        try:
+            social_account_service.synchronize_account(db, current_user, ig_account.id)
+            db.refresh(ig_account)
+        except Exception as e:
+            logger.warning(f"Initial sync for Instagram account {ig_account.id} failed: {e}")
 
     # Invalidate session token after successful connection
     await _delete_oauth_session(body.session_token)

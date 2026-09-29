@@ -600,9 +600,20 @@ export const DashboardOverviewPage = () => {
                       onMouseLeave={e => e.currentTarget.style.background='transparent'}
                     >
                       <td className="py-3.5 px-3">
-                        <span className="font-bold font-heading" style={{ color: 'var(--sp-text)' }}>
-                          {acc.account_name}
-                        </span>
+                        <div className="flex items-center gap-2.5">
+                          {(acc.platform_permissions?.picture_url || acc.platform_permissions?.avatar_url) ? (
+                            <img
+                              src={acc.platform_permissions.picture_url || acc.platform_permissions.avatar_url}
+                              alt={acc.account_name}
+                              className="h-6 w-6 rounded-md object-cover border border-slate-200 dark:border-slate-700"
+                            />
+                          ) : null}
+                          <span className="font-bold font-heading" style={{ color: 'var(--sp-text)' }}>
+                            {acc.platform === 'instagram' && !acc.account_name.startsWith('@')
+                              ? `@${acc.account_name}`
+                              : acc.account_name}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3.5 px-3">
                         <div className="flex items-center gap-2">
@@ -618,10 +629,10 @@ export const DashboardOverviewPage = () => {
                       </td>
                       <td className="py-3.5 px-3">
                         <Badge
-                          variant={acc.connection_status === 'connected' ? 'success' : 'danger'}
+                          variant={acc.connection_status === 'connected' ? (acc.is_token_expired ? 'warning' : 'success') : 'danger'}
                           size="xs"
                         >
-                          {acc.connection_status}
+                          {acc.connection_status === 'connected' ? (acc.is_token_expired ? 'Expired' : 'Connected') : (acc.connection_status === 'revoked' ? 'Revoked' : 'Disconnected')}
                         </Badge>
                       </td>
                        <td className="py-3.5 px-3" style={{ color: 'var(--sp-text-muted)' }}>

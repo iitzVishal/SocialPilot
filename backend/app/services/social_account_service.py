@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
@@ -12,6 +13,8 @@ from app.models.enums import SocialPlatform, SocialAccountStatus, UserRole
 from app.schemas.social_account import SocialAccountCreate, SocialAccountUpdatePermissions
 from app.core.security import encrypt_token, decrypt_token
 from app.integrations import get_platform_adapter
+
+logger = logging.getLogger(__name__)
 
 
 def _get_default_platform_permissions(platform: SocialPlatform) -> Dict[str, bool]:
@@ -142,9 +145,17 @@ def get_account(db: Session, user: User, account_id: int) -> SocialAccount:
 
 
 def disconnect_account(db: Session, user: User, account_id: int) -> SocialAccount:
-    """Safely disconnect/revoke a social media account."""
+    """Safely disconnect/revoke a social media account and invalidate credentials on remote platform where supported."""
     account = get_account(db, user, account_id)
     account.connection_status = SocialAccountStatus.REVOKED
+    try:
+        if account.access_token:
+            decrypted_token = decrypt_token(account.access_token)
+            adapter = get_platform_adapter(account.platform)
+            adapter.revoke_access(decrypted_token)
+    except Exception as e:
+        logger.warning(f"Could not revoke access on remote platform for account {account_id}: {e}")
+
     db.commit()
     db.refresh(account)
     return account
@@ -181,10 +192,19 @@ def synchronize_account(db: Session, user: User, account_id: int) -> Dict[str, A
         account.connection_status = SocialAccountStatus.EXPIRED
     elif sync_result.get("status") == "synchronized":
         account.connection_status = SocialAccountStatus.CONNECTED
+        current_perms = dict(account.platform_permissions or {})
         if sync_result.get("avatar_url"):
-            current_perms = dict(account.platform_permissions or {})
             current_perms["avatar_url"] = sync_result["avatar_url"]
-            account.platform_permissions = current_perms
+            current_perms["picture_url"] = sync_result["avatar_url"]
+        if sync_result.get("follower_count") is not None:
+            current_perms["follower_count"] = sync_result["follower_count"]
+        if sync_result.get("post_count") is not None:
+            current_perms["post_count"] = sync_result["post_count"]
+        if sync_result.get("category"):
+            current_perms["category"] = sync_result["category"]
+        account.platform_permissions = current_perms
+        if sync_result.get("account_name"):
+            account.account_name = sync_result["account_name"]
 
     db.commit()
     db.refresh(account)

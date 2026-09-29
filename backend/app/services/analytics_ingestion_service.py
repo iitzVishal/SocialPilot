@@ -21,6 +21,7 @@ from app.models.social_account import SocialAccount
 from app.models.enums import SocialPlatform, SocialAccountStatus
 from app.integrations import get_platform_adapter
 from app.db.mongo import ensure_active_mongo_db
+from app.core.security import decrypt_token
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +69,17 @@ class AnalyticsIngestionService:
             result["errors"].append(f"No integration adapter for platform: {e}")
             return result
 
+        # Safely decrypt stored access token
+        try:
+            decrypted_access_token = decrypt_token(social_account.access_token)
+        except Exception as e:
+            logger.warning(f"Failed to decrypt access token for account {social_account.id}: {e}")
+            decrypted_access_token = social_account.access_token
+
         # 1. Fetch & Store Account-Level Audience Metrics
         try:
             acc_metrics = adapter.fetch_account_metrics(
-                access_token=social_account.access_token,
+                access_token=decrypted_access_token,
                 account_identifier=social_account.account_identifier
             )
             
@@ -157,7 +165,7 @@ class AnalyticsIngestionService:
 
                 try:
                     post_metrics = adapter.fetch_post_metrics(
-                        access_token=social_account.access_token,
+                        access_token=decrypted_access_token,
                         external_post_id=external_post_id
                     )
 
