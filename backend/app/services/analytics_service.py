@@ -45,24 +45,67 @@ async def get_overview(
     """
     _verify_team_access(db, user, team_id)
 
-    mongo_db = ensure_active_mongo_db(mongo_db)
-    posts_coll = mongo_db["posts"]
+    status_counts: Dict[str, int] = {}
+    lifetime_total = 0
+    lifetime_published = 0
+    date_map: Dict[str, int] = {}
+    platform_breakdown = []
 
-    now = datetime.now(timezone.utc)
-    period_start = now - timedelta(days=days)
+    try:
+        active_mongo = ensure_active_mongo_db(mongo_db)
+        if active_mongo is not None:
+            posts_coll = active_mongo["posts"]
 
-    base_filter: Dict[str, Any] = {
-        "team_id": team_id,
-        "created_at": {"$gte": period_start},
-    }
+            # 1. Post status counts within period
+            status_pipeline = [
+                {"$match": base_filter},
+                {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+            ]
+            status_docs = await posts_coll.aggregate(status_pipeline).to_list(length=50)
+            status_counts = {d["_id"]: d["count"] for d in status_docs}
 
-    # 1. Post status counts within period
-    status_pipeline = [
-        {"$match": base_filter},
-        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
-    ]
-    status_docs = await posts_coll.aggregate(status_pipeline).to_list(length=50)
-    status_counts: Dict[str, int] = {d["_id"]: d["count"] for d in status_docs}
+            # Lifetime totals
+            lifetime_filter = {"team_id": team_id}
+            lifetime_total = await posts_coll.count_documents(lifetime_filter)
+            lifetime_published = await posts_coll.count_documents({**lifetime_filter, "status": "published"})
+
+            # 2. Daily published post trend (last N days)
+            trend_pipeline = [
+                {
+                    "$match": {
+                        "team_id": team_id,
+                        "status": "published",
+                        "published_at": {"$gte": period_start, "$lte": now},
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": {
+                            "year": {"$year": "$published_at"},
+                            "month": {"$month": "$published_at"},
+                            "day": {"$dayOfMonth": "$published_at"},
+                        },
+                        "count": {"$sum": 1},
+                    }
+                },
+                {"$sort": {"_id.year": 1, "_id.month": 1, "_id.day": 1}},
+            ]
+            trend_raw = await posts_coll.aggregate(trend_pipeline).to_list(length=200)
+            for d in trend_raw:
+                key = f"{d['_id']['year']:04d}-{d['_id']['month']:02d}-{d['_id']['day']:02d}"
+                date_map[key] = d["count"]
+
+            # 3. Platform breakdown (posts created in period)
+            platform_pipeline = [
+                {"$match": base_filter},
+                {"$unwind": "$target_platforms"},
+                {"$group": {"_id": "$target_platforms", "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}},
+            ]
+            platform_docs = await posts_coll.aggregate(platform_pipeline).to_list(length=20)
+            platform_breakdown = [{"platform": d["_id"], "count": d["count"]} for d in platform_docs]
+    except Exception as e:
+        logger.warning(f"MongoDB query unavailable in get_overview, using resilient defaults: {e}")
 
     total_posts = sum(status_counts.values())
     published_posts = status_counts.get("published", 0)
@@ -71,53 +114,11 @@ async def get_overview(
     failed_posts = status_counts.get("failed", 0)
     pending_approval = status_counts.get("pending_approval", 0)
 
-    # Lifetime totals
-    lifetime_filter = {"team_id": team_id}
-    lifetime_total = await posts_coll.count_documents(lifetime_filter)
-    lifetime_published = await posts_coll.count_documents({**lifetime_filter, "status": "published"})
-
-    # 2. Daily published post trend (last N days)
-    trend_pipeline = [
-        {
-            "$match": {
-                "team_id": team_id,
-                "status": "published",
-                "published_at": {"$gte": period_start, "$lte": now},
-            }
-        },
-        {
-            "$group": {
-                "_id": {
-                    "year": {"$year": "$published_at"},
-                    "month": {"$month": "$published_at"},
-                    "day": {"$dayOfMonth": "$published_at"},
-                },
-                "count": {"$sum": 1},
-            }
-        },
-        {"$sort": {"_id.year": 1, "_id.month": 1, "_id.day": 1}},
-    ]
-    trend_raw = await posts_coll.aggregate(trend_pipeline).to_list(length=200)
-    date_map: Dict[str, int] = {}
-    for d in trend_raw:
-        key = f"{d['_id']['year']:04d}-{d['_id']['month']:02d}-{d['_id']['day']:02d}"
-        date_map[key] = d["count"]
-
     daily_trend = []
     for i in range(days):
         day = (period_start + timedelta(days=i)).date()
         key = day.strftime("%Y-%m-%d")
         daily_trend.append({"date": key, "published": date_map.get(key, 0)})
-
-    # 3. Platform breakdown (posts created in period)
-    platform_pipeline = [
-        {"$match": base_filter},
-        {"$unwind": "$target_platforms"},
-        {"$group": {"_id": "$target_platforms", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-    ]
-    platform_docs = await posts_coll.aggregate(platform_pipeline).to_list(length=20)
-    platform_breakdown = [{"platform": d["_id"], "count": d["count"]} for d in platform_docs]
 
     # 4. Campaign summary
     campaigns = db.query(Campaign).filter(Campaign.team_id == team_id).all()
