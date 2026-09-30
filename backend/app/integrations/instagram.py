@@ -18,7 +18,7 @@ class InstagramAdapter(BasePlatformAdapter):
     def get_authorization_url(self, state: str, redirect_uri: Optional[str] = None) -> str:
         client_id = settings.META_CLIENT_ID or "META_CLIENT_ID_PLACEHOLDER"
         uri = redirect_uri or settings.INSTAGRAM_REDIRECT_URI
-        scope = "instagram_basic,instagram_content_publish"
+        scope = settings.INSTAGRAM_OAUTH_SCOPES
         return f"https://api.instagram.com/oauth/authorize?client_id={client_id}&redirect_uri={uri}&scope={scope}&response_type=code&state={state}"
 
     def exchange_code_for_token(self, code: str, redirect_uri: Optional[str] = None) -> Dict[str, Any]:
@@ -194,10 +194,10 @@ class InstagramAdapter(BasePlatformAdapter):
                         "comments": comments,
                         "shares": 0,
                         "clicks": 0,
-                        "views": total_eng * 5,
-                        "impressions": total_eng * 4,
-                        "reach": total_eng * 3,
-                        "engagement_rate": 4.2,
+                        "views": None,
+                        "impressions": None,
+                        "reach": None,
+                        "engagement_rate": None,
                     }
             return {
                 "supported": False,
@@ -257,10 +257,10 @@ class InstagramAdapter(BasePlatformAdapter):
                             "likes": likes,
                             "comments": comments,
                             "shares": 0,
-                            "impressions": total_eng * 4,
-                            "reach": total_eng * 3,
+                            "impressions": None,
+                            "reach": None,
                             "engagement": total_eng,
-                            "engagement_rate": round((total_eng / max(1, total_eng * 4)) * 100, 2) if total_eng > 0 else 0.0,
+                            "engagement_rate": None,
                         })
 
                         if len(posts) >= max_posts:

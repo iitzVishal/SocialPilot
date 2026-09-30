@@ -227,11 +227,7 @@ async def get_overview(
                 total_reach += int(rp.get("reach", 0) or 0)
 
     total_engagements = total_likes + total_comments + total_shares
-    if total_impressions == 0 and total_engagements > 0:
-        total_impressions = total_engagements * 3
-        total_reach = total_engagements * 2
-
-    engagement_rate = round((total_engagements / max(1, total_impressions) * 100), 2) if total_impressions > 0 else 0.0
+    engagement_rate = round((total_engagements / total_impressions * 100), 2) if total_impressions and total_impressions > 0 else 0.0
 
     return {
         "period_days": days,
@@ -625,10 +621,7 @@ async def get_engagement_analytics(
         top_posts = top_posts[:10]
 
     total_engagements = likes + comments + shares + clicks
-    if impressions == 0 and total_engagements > 0:
-        impressions = total_engagements * 3
-        reach = total_engagements * 2
-    engagement_rate = round((total_engagements / max(1, impressions) * 100), 2) if impressions > 0 else 0.0
+    engagement_rate = round((total_engagements / impressions * 100), 2) if impressions and impressions > 0 else 0.0
 
     daily_trend = []
     for i in range(days):
@@ -643,7 +636,7 @@ async def get_engagement_analytics(
     platform_breakdown = []
     for plat_name, p_data in platform_map.items():
         tot_eng = p_data["likes"] + p_data["comments"] + p_data["shares"] + p_data.get("clicks", 0)
-        p_imp = max(p_data.get("impressions", 0), tot_eng * 3)
+        p_imp = p_data.get("impressions", 0)
         platform_breakdown.append({
             "platform": plat_name,
             "likes": p_data["likes"],
@@ -651,9 +644,9 @@ async def get_engagement_analytics(
             "shares": p_data["shares"],
             "clicks": p_data.get("clicks", 0),
             "impressions": p_imp,
-            "reach": max(p_data.get("reach", 0), tot_eng * 2),
+            "reach": p_data.get("reach", 0),
             "total_engagements": tot_eng,
-            "engagement_rate": round(tot_eng / max(1, p_imp) * 100, 2) if p_imp > 0 else 0.0,
+            "engagement_rate": round(tot_eng / p_imp * 100, 2) if p_imp and p_imp > 0 else 0.0,
         })
 
     has_data = total_engagements > 0 or impressions > 0 or len(accounts) > 0
@@ -1013,9 +1006,9 @@ async def get_post_performance(
                 comments = int(rp.get("comments", 0) or 0)
                 shares = int(rp.get("shares", 0) or 0)
                 tot_eng = likes + comments + shares
-                imp = int(rp.get("impressions", 0) or (tot_eng * 3))
-                reach = int(rp.get("reach", 0) or (tot_eng * 2))
-                rate = rp.get("engagement_rate") or (round((tot_eng / max(1, imp)) * 100, 2) if imp > 0 else 0.0)
+                imp = rp.get("impressions")
+                reach = rp.get("reach")
+                rate = rp.get("engagement_rate") or (round((tot_eng / imp) * 100, 2) if imp and imp > 0 else None)
 
                 posts.append({
                     "external_post_id": rp.get("external_post_id"),

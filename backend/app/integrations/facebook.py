@@ -18,7 +18,7 @@ class FacebookAdapter(BasePlatformAdapter):
     def get_authorization_url(self, state: str, redirect_uri: Optional[str] = None) -> str:
         client_id = settings.META_CLIENT_ID or "META_CLIENT_ID_PLACEHOLDER"
         uri = redirect_uri or settings.META_REDIRECT_URI
-        scope = "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish"
+        scope = settings.META_OAUTH_SCOPES
         return f"https://www.facebook.com/{self.api_version}/dialog/oauth?client_id={client_id}&redirect_uri={uri}&state={state}&scope={scope}&response_type=code&auth_type=rerequest"
 
     def exchange_code_for_token(self, code: str, redirect_uri: Optional[str] = None) -> Dict[str, Any]:
@@ -279,9 +279,9 @@ class FacebookAdapter(BasePlatformAdapter):
                         "shares": shares,
                         "clicks": 0,
                         "views": 0,
-                        "impressions": total_eng * 3,
-                        "reach": total_eng * 2,
-                        "engagement_rate": 3.5,
+                        "impressions": None,
+                        "reach": None,
+                        "engagement_rate": None,
                     }
             return {
                 "supported": False,
@@ -349,10 +349,10 @@ class FacebookAdapter(BasePlatformAdapter):
                             "likes": reactions,
                             "comments": comments,
                             "shares": shares,
-                            "impressions": total_eng * 3,
-                            "reach": total_eng * 2,
+                            "impressions": None,
+                            "reach": None,
                             "engagement": total_eng,
-                            "engagement_rate": round((total_eng / max(1, total_eng * 3)) * 100, 2) if total_eng > 0 else 0.0,
+                            "engagement_rate": None,
                         })
 
                         if len(posts) >= max_posts:

@@ -256,9 +256,9 @@ class AnalyticsIngestionService:
 
                 # Upsert into post_analytics snapshot collection
                 total_eng = ep.get("likes", 0) + ep.get("comments", 0) + ep.get("shares", 0)
-                imp = ep.get("impressions", total_eng * 3)
-                reach = ep.get("reach", total_eng * 2)
-                eng_rate = ep.get("engagement_rate") or (round((total_eng / max(1, imp)) * 100, 2) if imp > 0 else 0.0)
+                imp = ep.get("impressions")
+                reach = ep.get("reach")
+                eng_rate = ep.get("engagement_rate") or ((round((total_eng / imp) * 100, 2) if imp and imp > 0 else None))
 
                 post_analytics_doc = {
                     "team_id": social_account.team_id,

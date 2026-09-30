@@ -981,7 +981,7 @@ export default function AnalyticsPage() {
               loading={engagementLoading}
               icon={Eye}
               label={`Total Impressions (${days}d)`}
-              value={engagement?.totals?.impressions?.toLocaleString() ?? '0'}
+              value={engagement?.totals?.impressions != null ? engagement.totals.impressions.toLocaleString() : (overview?.accounts?.connected > 0 ? 'Not available from Meta API' : '0')}
               iconColor="#3B82F6"
               iconBg="rgba(59,130,246,0.12)"
             />
@@ -989,7 +989,7 @@ export default function AnalyticsPage() {
               loading={engagementLoading}
               icon={Users}
               label="Audience Reach"
-              value={engagement?.totals?.reach?.toLocaleString() ?? '0'}
+              value={engagement?.totals?.reach != null ? engagement.totals.reach.toLocaleString() : (overview?.accounts?.connected > 0 ? 'Not available from Meta API' : '0')}
               iconColor="#A855F7"
               iconBg="rgba(168,85,247,0.12)"
             />
@@ -1162,10 +1162,14 @@ export default function AnalyticsPage() {
                           <td className="py-3 px-3 font-semibold text-xs">{(p.likes || 0).toLocaleString()}</td>
                           <td className="py-3 px-3 font-semibold text-xs">{(p.comments || 0).toLocaleString()}</td>
                           <td className="py-3 px-3 font-semibold text-xs">{(p.shares || 0).toLocaleString()}</td>
-                          <td className="py-3 px-3 font-medium text-xs">{(p.impressions || 0).toLocaleString()}</td>
-                          <td className="py-3 px-3 font-medium text-xs">{(p.reach || 0).toLocaleString()}</td>
+                          <td className="py-3 px-3 font-medium text-xs">
+                            {p.impressions != null ? p.impressions.toLocaleString() : <span className="text-gray-400 italic text-[11px]">Not available from Meta API</span>}
+                          </td>
+                          <td className="py-3 px-3 font-medium text-xs">
+                            {p.reach != null ? p.reach.toLocaleString() : <span className="text-gray-400 italic text-[11px]">Not available from Meta API</span>}
+                          </td>
                           <td className="py-3 px-3 font-bold text-indigo-400 text-xs">
-                            {(p.engagement_rate || 0).toFixed(2)}%
+                            {p.engagement_rate != null ? `${Number(p.engagement_rate).toFixed(2)}%` : <span className="text-gray-400 italic text-[11px]">N/A</span>}
                           </td>
                           <td className="py-3 px-3 text-right">
                             {p.permalink ? (

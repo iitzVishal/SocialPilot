@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     META_REDIRECT_URI: str = "http://127.0.0.1:8000/api/v1/oauth/facebook/callback"
     INSTAGRAM_REDIRECT_URI: str = "http://127.0.0.1:8000/api/v1/oauth/instagram/callback"
     META_API_VERSION: str = "v19.0"
+    META_OAUTH_SCOPES: str = "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish"
+    INSTAGRAM_OAUTH_SCOPES: str = "instagram_basic,instagram_content_publish"
 
     LINKEDIN_CLIENT_ID: Optional[str] = None
     LINKEDIN_CLIENT_SECRET: Optional[str] = None
