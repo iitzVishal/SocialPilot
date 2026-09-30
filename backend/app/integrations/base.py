@@ -62,3 +62,7 @@ class BasePlatformAdapter(ABC):
             "notice": f"Post metrics not supported or unconfigured for {self.platform.value}"
         }
 
+    def fetch_recent_posts(self, access_token: str, account_identifier: str, limit: int = 25) -> List[Dict[str, Any]]:
+        """Fetch recent published posts/media from the platform API."""
+        return []
+

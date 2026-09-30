@@ -20,12 +20,13 @@ router = APIRouter()
 async def get_analytics_overview(
     team_id: int = Query(..., description="Target team workspace ID"),
     days: int = Query(30, ge=7, le=365, description="Number of days to look back"),
+    account_id: Optional[int] = Query(None, description="Optional social account ID filter"),
     db: Session = Depends(deps.get_db),
     mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
     current_user: User = Depends(deps.get_current_active_user),
 ):
     """
-    Return workspace-level analytics overview.
+    Return workspace-level or account-specific analytics overview.
     """
     return await analytics_service.get_overview(
         db=db,
@@ -33,6 +34,7 @@ async def get_analytics_overview(
         user=current_user,
         team_id=team_id,
         days=days,
+        account_id=account_id,
     )
 
 
@@ -53,6 +55,34 @@ async def get_posts_timeline(
         user=current_user,
         team_id=team_id,
         days=days,
+    )
+
+
+@router.get("/posts/performance", response_model=Dict[str, Any])
+async def get_posts_performance_endpoint(
+    team_id: int = Query(..., description="Target team workspace ID"),
+    account_id: Optional[int] = Query(None, description="Optional social account ID filter"),
+    platform: Optional[str] = Query(None, description="Optional platform filter"),
+    days: int = Query(30, ge=1, le=365, description="Number of days to look back"),
+    limit: int = Query(25, ge=1, le=100, description="Page limit"),
+    skip: int = Query(0, ge=0, description="Offset for pagination"),
+    db: Session = Depends(deps.get_db),
+    mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    current_user: User = Depends(deps.get_current_active_user),
+):
+    """
+    Return paginated list of social posts and published media along with their engagement metrics.
+    """
+    return await analytics_service.get_post_performance(
+        db=db,
+        mongo_db=mongo_db,
+        user=current_user,
+        team_id=team_id,
+        account_id=account_id,
+        platform=platform,
+        days=days,
+        limit=limit,
+        skip=skip,
     )
 
 
@@ -80,6 +110,7 @@ async def get_engagement_analytics_endpoint(
     days: int = Query(30, ge=1, le=365, description="Number of days to look back"),
     platform: Optional[str] = Query(None, description="Optional platform filter (facebook, instagram, etc.)"),
     campaign_id: Optional[int] = Query(None, description="Optional campaign ID filter"),
+    account_id: Optional[int] = Query(None, description="Optional social account ID filter"),
     db: Session = Depends(deps.get_db),
     mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
     current_user: User = Depends(deps.get_current_active_user),
@@ -96,6 +127,7 @@ async def get_engagement_analytics_endpoint(
         days=days,
         platform=platform,
         campaign_id=campaign_id,
+        account_id=account_id,
     )
 
 
@@ -104,6 +136,7 @@ async def get_audience_growth_endpoint(
     team_id: int = Query(..., description="Target team workspace ID"),
     days: int = Query(30, ge=1, le=365, description="Number of days to look back"),
     platform: Optional[str] = Query(None, description="Optional platform filter"),
+    account_id: Optional[int] = Query(None, description="Optional social account ID filter"),
     db: Session = Depends(deps.get_db),
     mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
     current_user: User = Depends(deps.get_current_active_user),
@@ -118,6 +151,7 @@ async def get_audience_growth_endpoint(
         team_id=team_id,
         days=days,
         platform=platform,
+        account_id=account_id,
     )
 
 

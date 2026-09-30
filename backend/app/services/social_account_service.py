@@ -196,18 +196,81 @@ def synchronize_account(db: Session, user: User, account_id: int) -> Dict[str, A
         if sync_result.get("avatar_url"):
             current_perms["avatar_url"] = sync_result["avatar_url"]
             current_perms["picture_url"] = sync_result["avatar_url"]
-        if sync_result.get("follower_count") is not None:
-            current_perms["follower_count"] = sync_result["follower_count"]
-        if sync_result.get("post_count") is not None:
-            current_perms["post_count"] = sync_result["post_count"]
+        if sync_result.get("username"):
+            current_perms["username"] = sync_result["username"]
+        if sync_result.get("biography"):
+            current_perms["biography"] = sync_result["biography"]
         if sync_result.get("category"):
             current_perms["category"] = sync_result["category"]
-        account.platform_permissions = current_perms
+
+        follower_count = sync_result.get("follower_count")
+        if follower_count is not None:
+            current_perms["follower_count"] = int(follower_count)
+        following_count = sync_result.get("following_count")
+        if following_count is not None:
+            current_perms["following_count"] = int(following_count)
+        post_count = sync_result.get("post_count")
+        if post_count is not None:
+            current_perms["post_count"] = int(post_count)
+
         if sync_result.get("account_name"):
             account.account_name = sync_result["account_name"]
 
+        # Fetch recent posts / media from platform
+        try:
+            recent_posts = adapter.fetch_recent_posts(decrypted_token, account.account_identifier, limit=50)
+            if recent_posts:
+                current_perms["recent_posts"] = recent_posts[:25]
+                if not current_perms.get("post_count"):
+                    current_perms["post_count"] = len(recent_posts)
+        except Exception as p_err:
+            logger.warning(f"Recent posts fetch failed for account {account.id}: {p_err}")
+
+        # Maintain historical daily snapshots
+        today_str = now.strftime("%Y-%m-%d")
+        snapshots = list(current_perms.get("snapshots") or [])
+        prev_snapshot = snapshots[-1] if snapshots else None
+        prev_followers = prev_snapshot.get("follower_count", current_perms.get("follower_count", 0)) if prev_snapshot else current_perms.get("follower_count", 0)
+        curr_followers = current_perms.get("follower_count", 0)
+        net_growth = curr_followers - prev_followers
+        growth_rate = round((net_growth / max(1, prev_followers) * 100), 2) if prev_followers > 0 else 0.0
+
+        new_snapshot = {
+            "date": today_str,
+            "recorded_at": now.isoformat(),
+            "follower_count": curr_followers,
+            "following_count": current_perms.get("following_count", 0),
+            "post_count": current_perms.get("post_count", 0),
+            "net_follower_growth": net_growth,
+            "growth_rate": growth_rate,
+        }
+
+        # Deduplicate today's snapshot
+        updated_snapshots = [s for s in snapshots if s.get("date") != today_str]
+        updated_snapshots.append(new_snapshot)
+        current_perms["snapshots"] = updated_snapshots[-90:]
+
+        account.platform_permissions = current_perms
+
     db.commit()
     db.refresh(account)
+
+    # Ingest into MongoDB asynchronously if active
+    try:
+        from app.db.mongo import get_mongo_db
+        import asyncio
+        m_db = get_mongo_db()
+        if m_db is not None:
+            from app.services.analytics_ingestion_service import AnalyticsIngestionService
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.create_task(AnalyticsIngestionService.sync_account_analytics(db, m_db, account))
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(AnalyticsIngestionService.sync_account_analytics(db, m_db, account))
+                loop.close()
+    except Exception as m_err:
+        logger.warning(f"Async Mongo analytics ingestion deferred for account {account.id}: {m_err}")
 
     return {
         "account_id": account.id,

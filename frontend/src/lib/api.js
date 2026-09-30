@@ -203,12 +203,16 @@ export const campaignsAPI = {
 };
 
 export const analyticsAPI = {
-  getOverview: (teamId, days = 30) => api.get('/analytics/overview', { params: { team_id: teamId, days } }),
+  getOverview: (teamId, days = 30, accountId = null) =>
+    api.get('/analytics/overview', {
+      params: { team_id: teamId, days, ...(accountId ? { account_id: accountId } : {}) },
+    }),
   getPostsTimeline: (teamId, days = 30) => api.get('/analytics/posts/timeline', { params: { team_id: teamId, days } }),
   getCampaignPerformance: (teamId) => api.get('/analytics/campaigns/performance', { params: { team_id: teamId } }),
   getEngagement: (teamId, params = {}) => api.get('/analytics/engagement', { params: { team_id: teamId, ...params } }),
   getAudience: (teamId, params = {}) => api.get('/analytics/audience', { params: { team_id: teamId, ...params } }),
   getROI: (teamId, days = 30) => api.get('/analytics/roi', { params: { team_id: teamId, days } }),
+  getPostPerformance: (teamId, params = {}) => api.get('/analytics/posts/performance', { params: { team_id: teamId, ...params } }),
   sync: (teamId) => api.post('/analytics/sync', {}, { params: { team_id: teamId } }),
 };
 

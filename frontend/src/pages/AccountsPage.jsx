@@ -196,10 +196,21 @@ export const AccountsPage = () => {
     }
   };
 
+  const [syncingAccountId, setSyncingAccountId] = useState(null);
+
+  const formatRelativeTime = (isoString) => {
+    if (!isoString) return 'Never synced';
+    const diff = Date.now() - new Date(isoString).getTime();
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return new Date(isoString).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
   // Sync Trigger
   const handleSyncAccount = async (account) => {
     try {
-      setActionLoading(true);
+      setSyncingAccountId(account.id);
       const res = await accountsAPI.sync(account.id);
       showToast(res.data.message || `Synchronized ${account.account_name} successfully!`);
       fetchAccounts(selectedPlatform);
@@ -207,7 +218,7 @@ export const AccountsPage = () => {
       console.error('Sync error:', err);
       showToast('Failed to trigger synchronization workflow.', 'error');
     } finally {
-      setActionLoading(false);
+      setSyncingAccountId(null);
     }
   };
 
@@ -438,6 +449,14 @@ export const AccountsPage = () => {
                         </span>
                       </div>
                     )}
+                    {account.platform_permissions?.following_count !== undefined && account.platform_permissions?.following_count !== null && (
+                      <div className="flex justify-between text-slate-500">
+                        <span>Following:</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                          {Number(account.platform_permissions.following_count).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                     {account.platform_permissions?.post_count !== undefined && account.platform_permissions?.post_count !== null && (
                       <div className="flex justify-between text-slate-500">
                         <span>Total Posts:</span>
@@ -446,12 +465,21 @@ export const AccountsPage = () => {
                         </span>
                       </div>
                     )}
-                    <div className="flex justify-between text-slate-500">
+                    {account.platform_permissions?.biography && (
+                      <div className="text-[11px] text-slate-500 italic pt-1 border-t border-slate-100 dark:border-slate-800 line-clamp-2">
+                        &quot;{account.platform_permissions.biography}&quot;
+                      </div>
+                    )}
+                    <div className="flex justify-between text-slate-500 pt-1">
                       <span>Last Sync:</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">
-                        {account.last_synced_at
-                          ? new Date(account.last_synced_at).toLocaleString()
-                          : 'Never synced'}
+                      <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                        {syncingAccountId === account.id ? (
+                          <span className="inline-flex items-center gap-1 text-cyan-600 dark:text-violet-400 font-semibold animate-pulse">
+                            <RefreshCw className="h-3 w-3 animate-spin" /> Syncing...
+                          </span>
+                        ) : (
+                          formatRelativeTime(account.last_synced_at)
+                        )}
                       </span>
                     </div>
                     <div className="flex justify-between text-slate-500">
@@ -489,12 +517,13 @@ export const AccountsPage = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    title="Trigger Synchronization"
+                    title={syncingAccountId === account.id ? "Syncing account..." : "Sync Now"}
                     aria-label="Trigger Synchronization"
                     onClick={() => handleSyncAccount(account)}
+                    disabled={syncingAccountId === account.id}
                     className="p-2"
                   >
-                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    <RefreshCw className={`h-3.5 w-3.5 ${syncingAccountId === account.id ? 'animate-spin text-cyan-500' : ''}`} aria-hidden="true" />
                   </Button>
                   <Button
                     variant="danger"

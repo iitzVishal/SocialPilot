@@ -218,6 +218,86 @@ class AnalyticsIngestionService:
             logger.warning(f"Error querying published posts for account {social_account.id}: {e}")
             result["errors"].append(f"Post metrics scan failed: {str(e)}")
 
+        # 3. Ingest Recent Posts Directly from Social Platform via Adapter
+        try:
+            external_posts = adapter.fetch_recent_posts(
+                access_token=decrypted_access_token,
+                account_identifier=social_account.account_identifier,
+                limit=50
+            )
+            ext_synced = 0
+            for ep in external_posts:
+                ext_post_id = ep.get("external_post_id")
+                if not ext_post_id:
+                    continue
+
+                # Upsert into posts collection for timeline & visibility
+                post_doc = {
+                    "team_id": social_account.team_id,
+                    "account_id": social_account.id,
+                    "target_accounts": [social_account.id],
+                    "platform": result["platform"],
+                    "external_post_id": ext_post_id,
+                    "base_content": ep.get("caption", ""),
+                    "content": ep.get("caption", ""),
+                    "media_type": ep.get("media_type", "image"),
+                    "thumbnail_url": ep.get("thumbnail_url"),
+                    "permalink": ep.get("permalink"),
+                    "created_at": ep.get("created_time") or now_utc.isoformat(),
+                    "published_at": ep.get("created_time") or now_utc.isoformat(),
+                    "status": "published",
+                    "source": "platform_sync"
+                }
+                await posts_coll.update_one(
+                    {"external_post_id": ext_post_id, "account_id": social_account.id},
+                    {"$set": post_doc},
+                    upsert=True
+                )
+
+                # Upsert into post_analytics snapshot collection
+                total_eng = ep.get("likes", 0) + ep.get("comments", 0) + ep.get("shares", 0)
+                imp = ep.get("impressions", total_eng * 3)
+                reach = ep.get("reach", total_eng * 2)
+                eng_rate = ep.get("engagement_rate") or (round((total_eng / max(1, imp)) * 100, 2) if imp > 0 else 0.0)
+
+                post_analytics_doc = {
+                    "team_id": social_account.team_id,
+                    "account_id": social_account.id,
+                    "platform": result["platform"],
+                    "external_post_id": ext_post_id,
+                    "caption": ep.get("caption", ""),
+                    "media_type": ep.get("media_type", "image"),
+                    "thumbnail_url": ep.get("thumbnail_url"),
+                    "permalink": ep.get("permalink"),
+                    "published_at": ep.get("created_time"),
+                    "likes": ep.get("likes", 0),
+                    "comments": ep.get("comments", 0),
+                    "shares": ep.get("shares", 0),
+                    "clicks": ep.get("clicks", 0),
+                    "views": ep.get("views", 0),
+                    "impressions": imp,
+                    "reach": reach,
+                    "engagement_rate": eng_rate,
+                    "recorded_at": now_utc,
+                    "date": today_start.strftime("%Y-%m-%d"),
+                    "source": "api_sync"
+                }
+                await post_analytics_coll.update_one(
+                    {
+                        "external_post_id": ext_post_id,
+                        "account_id": social_account.id,
+                        "date": today_start.strftime("%Y-%m-%d")
+                    },
+                    {"$set": post_analytics_doc},
+                    upsert=True
+                )
+                ext_synced += 1
+
+            result["posts_synced_count"] = result.get("posts_synced_count", 0) + ext_synced
+        except Exception as ep_err:
+            logger.warning(f"Recent external posts ingestion failed for account {social_account.id}: {ep_err}")
+            result["errors"].append(f"External posts ingestion error: {str(ep_err)}")
+
         return result
 
     @staticmethod

@@ -184,6 +184,7 @@ export const DashboardOverviewPage = () => {
   const { activeTeamId, activeTeam } = useTeam();
   const [accounts, setAccounts] = useState([]);
   const [overview, setOverview] = useState(null);
+  const [recentPosts, setRecentPosts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const heroRef = useRef(null);
 
@@ -204,6 +205,12 @@ export const DashboardOverviewPage = () => {
           setOverview(ovRes.data);
         } catch (ovErr) {
           console.warn('Analytics overview deferred:', ovErr);
+        }
+        try {
+          const perfRes = await analyticsAPI.getPostPerformance(activeTeamId, { limit: 6 });
+          setRecentPosts(perfRes.data?.posts || []);
+        } catch (perfErr) {
+          console.warn('Recent posts performance deferred:', perfErr);
         }
       }
     } catch (err) {
@@ -682,6 +689,110 @@ export const DashboardOverviewPage = () => {
             </table>
           )}
         </div>
+      </div>
+
+      {/* ═══════════════════════════════════════
+          6. RECENT POST PERFORMANCE
+      ═══════════════════════════════════════ */}
+      <div className="sp-card p-6 animate-sp-fade-in-up-delay-3">
+        <CardHeader
+          title="Recent Post Performance"
+          description="Normalized metrics and engagement for recently synced content"
+          headingLevel="h2"
+          action={
+            <Link to="/dashboard/analytics" className="inline-flex">
+              <Button variant="outline" size="sm" icon={ArrowUpRight}>
+                View All Analytics
+              </Button>
+            </Link>
+          }
+        />
+
+        {recentPosts.length === 0 ? (
+          <div className="mt-4 p-8 rounded-xl border border-dashed text-center text-xs text-slate-500 dark:text-slate-400" style={{ borderColor: 'var(--sp-border)' }}>
+            <p className="font-semibold text-slate-700 dark:text-slate-300">No Post Data Synchronized Yet</p>
+            <p className="mt-1">
+              Connect your Facebook Page or Instagram account and click &quot;Sync Now&quot; to ingest your recent media and engagement metrics.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {recentPosts.map((post) => {
+              const pMeta = platformMeta[post.platform] || platformMeta.facebook;
+              const PIcon = pMeta.icon;
+              return (
+                <div
+                  key={post.external_post_id || post.caption?.slice(0, 20)}
+                  className="rounded-xl border p-4 flex flex-col justify-between transition-all hover:-translate-y-0.5"
+                  style={{ background: 'var(--sp-surface-2)', borderColor: 'var(--sp-border)' }}
+                >
+                  <div>
+                    {/* Header: Platform & Date */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className={pMeta.brandColor}>
+                          <PIcon className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                          {pMeta.name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {post.published_at ? new Date(post.published_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+                      </span>
+                    </div>
+
+                    {/* Thumbnail & Caption */}
+                    <div className="flex gap-3 items-start mb-3">
+                      {post.thumbnail_url ? (
+                        <img
+                          src={post.thumbnail_url}
+                          alt="Post media thumbnail"
+                          className="h-14 w-14 rounded-lg object-cover flex-shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs"
+                        />
+                      ) : (
+                        <div className={`h-14 w-14 rounded-lg ${pMeta.iconBg} ${pMeta.iconBorder} border flex items-center justify-center flex-shrink-0 ${pMeta.brandColor}`}>
+                          <PIcon className="h-6 w-6" aria-hidden="true" />
+                        </div>
+                      )}
+                      <p className="text-xs text-slate-700 dark:text-slate-200 line-clamp-3 leading-relaxed">
+                        {post.caption || 'No caption text provided for this media item.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Metrics Row */}
+                  <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-3 text-slate-500">
+                      <span title="Likes">
+                        ❤️ <strong className="text-slate-800 dark:text-slate-100 font-semibold">{post.likes ?? 0}</strong>
+                      </span>
+                      <span title="Comments">
+                        💬 <strong className="text-slate-800 dark:text-slate-100 font-semibold">{post.comments ?? 0}</strong>
+                      </span>
+                      {post.shares !== undefined && post.shares > 0 && (
+                        <span title="Shares">
+                          🔁 <strong className="text-slate-800 dark:text-slate-100 font-semibold">{post.shares}</strong>
+                        </span>
+                      )}
+                    </div>
+                    {post.permalink && (
+                      <a
+                        href={post.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-bold inline-flex items-center gap-1 hover:underline cursor-pointer"
+                        style={{ color: 'var(--sp-primary)' }}
+                      >
+                        View <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

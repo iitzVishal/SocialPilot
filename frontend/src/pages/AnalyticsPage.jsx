@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTeam } from '../context/TeamContext';
-import { analyticsAPI, reportsAPI, campaignsAPI } from '../lib/api';
+import { analyticsAPI, reportsAPI, campaignsAPI, accountsAPI } from '../lib/api';
 import {
   BarChart3,
   TrendingUp,
@@ -28,6 +28,7 @@ import {
   Share2,
   RefreshCw,
   Info,
+  ArrowUpRight,
   ChevronDown,
   Activity,
   Zap,
@@ -393,6 +394,8 @@ export default function AnalyticsPage() {
   const { currentTeam } = useTeam();
   const [activeTab, setActiveTab] = useState('overview');
   const [days, setDays] = useState(30);
+  const [selectedAccountId, setSelectedAccountId] = useState('all');
+  const [connectedAccounts, setConnectedAccounts] = useState([]);
 
   // Overview states
   const [overview, setOverview] = useState(null);
@@ -402,6 +405,8 @@ export default function AnalyticsPage() {
   // Engagement states
   const [engagement, setEngagement] = useState(null);
   const [engagementLoading, setEngagementLoading] = useState(false);
+  const [postPerformance, setPostPerformance] = useState([]);
+  const [postPerfLoading, setPostPerfLoading] = useState(false);
 
   // Audience states
   const [audience, setAudience] = useState(null);
@@ -426,13 +431,24 @@ export default function AnalyticsPage() {
 
   const teamId = currentTeam?.id;
 
+  const fetchAccountsList = useCallback(async () => {
+    if (!teamId) return;
+    try {
+      const res = await accountsAPI.list({ team_id: teamId });
+      setConnectedAccounts(res.data || []);
+    } catch (err) {
+      console.error('Failed to load accounts for analytics dropdown:', err);
+    }
+  }, [teamId]);
+
   const fetchOverview = useCallback(async () => {
     if (!teamId) return;
     setLoading(true);
     setError(null);
     try {
+      const accId = selectedAccountId !== 'all' ? Number(selectedAccountId) : null;
       const [ovRes, tlRes, cpRes] = await Promise.all([
-        analyticsAPI.getOverview(teamId, days),
+        analyticsAPI.getOverview(teamId, days, accId),
         analyticsAPI.getPostsTimeline(teamId, days),
         analyticsAPI.getCampaignPerformance(teamId),
       ]);
@@ -445,33 +461,41 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [teamId, days]);
+  }, [teamId, days, selectedAccountId]);
 
   const fetchEngagement = useCallback(async () => {
     if (!teamId) return;
     setEngagementLoading(true);
+    setPostPerfLoading(true);
     try {
-      const res = await analyticsAPI.getEngagement(teamId, { days });
-      setEngagement(res.data);
+      const accParam = selectedAccountId !== 'all' ? { account_id: Number(selectedAccountId) } : {};
+      const [engRes, postRes] = await Promise.all([
+        analyticsAPI.getEngagement(teamId, { days, ...accParam }),
+        analyticsAPI.getPostPerformance(teamId, { days, limit: 25, ...accParam }),
+      ]);
+      setEngagement(engRes.data);
+      setPostPerformance(postRes.data?.posts || []);
     } catch (err) {
       console.error('Failed to load engagement analytics:', err);
     } finally {
       setEngagementLoading(false);
+      setPostPerfLoading(false);
     }
-  }, [teamId, days]);
+  }, [teamId, days, selectedAccountId]);
 
   const fetchAudience = useCallback(async () => {
     if (!teamId) return;
     setAudienceLoading(true);
     try {
-      const res = await analyticsAPI.getAudience(teamId, { days });
+      const accParam = selectedAccountId !== 'all' ? { account_id: Number(selectedAccountId) } : {};
+      const res = await analyticsAPI.getAudience(teamId, { days, ...accParam });
       setAudience(res.data);
     } catch (err) {
       console.error('Failed to load audience analytics:', err);
     } finally {
       setAudienceLoading(false);
     }
-  }, [teamId, days]);
+  }, [teamId, days, selectedAccountId]);
 
   const fetchROI = useCallback(async () => {
     if (!teamId) return;
@@ -516,19 +540,21 @@ export default function AnalyticsPage() {
 
   // Initial load
   useEffect(() => {
+    fetchAccountsList();
     fetchOverview();
     fetchCampaignsForComparison();
-  }, [fetchOverview, fetchCampaignsForComparison]);
+  }, [fetchAccountsList, fetchOverview, fetchCampaignsForComparison]);
 
-  // Tab switch effect
+  // Tab switch & account switch effect
   useEffect(() => {
+    if (activeTab === 'overview') fetchOverview();
     if (activeTab === 'engagement') fetchEngagement();
     if (activeTab === 'audience') fetchAudience();
     if (activeTab === 'roi') fetchROI();
     if (activeTab === 'comparison' && selectedCompIds.length >= 2 && !compData) {
       runComparison();
     }
-  }, [activeTab, fetchEngagement, fetchAudience, fetchROI, runComparison, selectedCompIds.length, compData]);
+  }, [activeTab, selectedAccountId, days, fetchOverview, fetchEngagement, fetchAudience, fetchROI, runComparison, selectedCompIds.length, compData]);
 
   const handleSyncAnalytics = async () => {
     if (!teamId || syncing) return;
@@ -646,6 +672,27 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Account Selector */}
+          <div className="flex items-center">
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-colors shadow-2xs"
+              style={{
+                borderColor: 'var(--border-default)',
+                background: 'var(--bg-card)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <option value="all">All Accounts ({connectedAccounts.length})</option>
+              {connectedAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.platform.toUpperCase()}: {acc.account_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <PeriodSelector value={days} onChange={setDays} />
 
           {/* Sync Analytics Trigger */}
@@ -1051,6 +1098,97 @@ export default function AnalyticsPage() {
               </div>
             )}
           </SectionCard>
+
+          {/* Published Post Performance Table */}
+          <SectionCard
+            title="Published Post Performance"
+            subtitle="Normalized metrics and engagement per synchronized social post"
+            icon={Send}
+          >
+            {postPerfLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}
+              </div>
+            ) : postPerformance.length === 0 ? (
+              <div className="py-8 text-center text-sm text-gray-400">
+                No post analytics found for this account/period. Click &quot;Sync Social Data&quot; to fetch recent published posts.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[var(--sp-surface-2)] text-gray-400 uppercase font-semibold">
+                    <tr>
+                      <th className="py-2.5 px-3">Media / Post</th>
+                      <th className="py-2.5 px-3">Platform</th>
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Likes</th>
+                      <th className="py-2.5 px-3">Comments</th>
+                      <th className="py-2.5 px-3">Shares</th>
+                      <th className="py-2.5 px-3">Impressions</th>
+                      <th className="py-2.5 px-3">Reach</th>
+                      <th className="py-2.5 px-3">Rate</th>
+                      <th className="py-2.5 px-3 text-right">Link</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--sp-border)] text-gray-200">
+                    {postPerformance.map((p) => {
+                      const meta = PLATFORM_META[p.platform] || { label: p.platform, color: '#6366F1' };
+                      return (
+                        <tr key={p.external_post_id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2.5 max-w-xs">
+                              {p.thumbnail_url ? (
+                                <img
+                                  src={p.thumbnail_url}
+                                  alt="Post media"
+                                  className="h-8 w-8 rounded-lg object-cover flex-shrink-0 border border-slate-700"
+                                />
+                              ) : (
+                                <div className="h-8 w-8 rounded-lg bg-indigo-500/10 flex items-center justify-center font-bold text-xs text-indigo-400 flex-shrink-0">
+                                  {p.platform?.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <span className="truncate text-xs font-medium text-[var(--sp-text)]" title={p.caption}>
+                                {p.caption || 'No caption'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 uppercase font-semibold text-xs" style={{ color: meta.color }}>
+                            {p.platform}
+                          </td>
+                          <td className="py-3 px-3 text-gray-400 text-xs">
+                            {p.published_at ? new Date(p.published_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
+                          </td>
+                          <td className="py-3 px-3 font-semibold text-xs">{(p.likes || 0).toLocaleString()}</td>
+                          <td className="py-3 px-3 font-semibold text-xs">{(p.comments || 0).toLocaleString()}</td>
+                          <td className="py-3 px-3 font-semibold text-xs">{(p.shares || 0).toLocaleString()}</td>
+                          <td className="py-3 px-3 font-medium text-xs">{(p.impressions || 0).toLocaleString()}</td>
+                          <td className="py-3 px-3 font-medium text-xs">{(p.reach || 0).toLocaleString()}</td>
+                          <td className="py-3 px-3 font-bold text-indigo-400 text-xs">
+                            {(p.engagement_rate || 0).toFixed(2)}%
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            {p.permalink ? (
+                              <a
+                                href={p.permalink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300 font-semibold"
+                              >
+                                View <ArrowUpRight className="w-3 h-3" />
+                              </a>
+                            ) : (
+                              <span className="text-gray-500">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
         </div>
       )}
 
@@ -1059,20 +1197,20 @@ export default function AnalyticsPage() {
       ═══════════════════════════════════════════════════════════ */}
       {activeTab === 'audience' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             <StatCard
               loading={audienceLoading}
               icon={Users}
               label="Total Audience"
               value={(audience?.total_followers || 0).toLocaleString()}
-              sub="Across all connected accounts"
+              sub="Verified follower count"
               iconColor="#3B82F6"
               iconBg="rgba(59,130,246,0.12)"
             />
             <StatCard
               loading={audienceLoading}
               icon={TrendingUp}
-              label={`Net Audience Growth (${days}d)`}
+              label={`Net Growth (${days}d)`}
               value={
                 audience?.net_growth != null
                   ? (audience.net_growth >= 0 ? `+${audience.net_growth.toLocaleString()}` : audience.net_growth.toLocaleString())
@@ -1085,13 +1223,72 @@ export default function AnalyticsPage() {
             <StatCard
               loading={audienceLoading}
               icon={Activity}
-              label="Connected Social Channels"
-              value={audience?.accounts?.length || 0}
-              sub="Active profile syncs"
+              label="Daily Growth"
+              value={
+                audience?.daily_growth != null
+                  ? (audience.daily_growth >= 0 ? `+${audience.daily_growth.toLocaleString()}` : audience.daily_growth.toLocaleString())
+                  : '0'
+              }
+              sub="Today's net change"
+              iconColor="#10B981"
+              iconBg="rgba(16,185,129,0.12)"
+            />
+            <StatCard
+              loading={audienceLoading}
+              icon={Calendar}
+              label="Weekly Growth"
+              value={
+                audience?.weekly_growth != null
+                  ? (audience.weekly_growth >= 0 ? `+${audience.weekly_growth.toLocaleString()}` : audience.weekly_growth.toLocaleString())
+                  : '0'
+              }
+              sub="Last 7 days change"
+              iconColor="#6366F1"
+              iconBg="rgba(99,102,241,0.12)"
+            />
+            <StatCard
+              loading={audienceLoading}
+              icon={Layers}
+              label="Monthly Growth"
+              value={
+                audience?.monthly_growth != null
+                  ? (audience.monthly_growth >= 0 ? `+${audience.monthly_growth.toLocaleString()}` : audience.monthly_growth.toLocaleString())
+                  : '0'
+              }
+              sub="Last 30 days change"
               iconColor="#A855F7"
               iconBg="rgba(168,85,247,0.12)"
             />
           </div>
+
+          {/* Historical Audience Trajectory SVG Chart */}
+          <SectionCard
+            title="Historical Audience Trajectory"
+            subtitle={`Daily verified follower snapshots over the last ${days} days`}
+            icon={TrendingUp}
+          >
+            {audienceLoading ? (
+              <Skeleton className="h-32 w-full rounded-xl" />
+            ) : audience?.growth_trend?.length ? (
+              <div>
+                <LineChart
+                  data={audience.growth_trend}
+                  height={140}
+                  color="#6366F1"
+                  label="followers"
+                />
+                {audience.growth_trend.every(g => g.net_growth === 0) && (
+                  <p className="text-[11px] text-gray-400 mt-2 text-center italic">
+                    Baseline established. More historical trend points will appear after future scheduled syncs.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm py-8 text-center text-gray-400">
+                No historical follower snapshots recorded yet. Click &quot;Sync Social Data&quot; to establish baseline.
+              </p>
+            )}
+          </SectionCard>
 
           {/* Connected Accounts Audience Table */}
           <SectionCard

@@ -168,7 +168,7 @@ class FacebookAdapter(BasePlatformAdapter):
         try:
             url = f"https://graph.facebook.com/{self.api_version}/{account_identifier}"
             params = {
-                "fields": "id,name,picture{url},category,fan_count,followers_count,instagram_business_account{id,username,name}",
+                "fields": "id,name,username,about,picture{url},category,fan_count,followers_count,instagram_business_account{id,username,name}",
                 "access_token": access_token
             }
             with httpx.Client(timeout=10.0) as client:
@@ -195,6 +195,8 @@ class FacebookAdapter(BasePlatformAdapter):
                 "platform": self.platform.value,
                 "account_identifier": data.get("id", account_identifier),
                 "account_name": data.get("name", "Facebook Page"),
+                "username": data.get("username"),
+                "biography": data.get("about"),
                 "avatar_url": data.get("picture", {}).get("data", {}).get("url"),
                 "category": data.get("category"),
                 "follower_count": int(followers) if followers else 0,
@@ -297,4 +299,71 @@ class FacebookAdapter(BasePlatformAdapter):
                 "views": 0, "impressions": 0, "reach": 0, "engagement_rate": 0.0,
                 "notice": str(e)
             }
+    def fetch_recent_posts(self, access_token: str, account_identifier: str, limit: int = 25) -> List[Dict[str, Any]]:
+        """
+        Fetch recent published posts from Facebook Page via Meta Graph API with pagination support.
+        """
+        posts = []
+        max_posts = min(limit, 50)
+        url = f"https://graph.facebook.com/{self.api_version}/{account_identifier}/posts"
+        params = {
+            "fields": "id,message,created_time,permalink_url,attachments{media_type,url,unshimmed_url,subattachments},shares,reactions.summary(total_count),comments.summary(total_count)",
+            "limit": min(max_posts, 25),
+            "access_token": access_token
+        }
 
+        with httpx.Client(timeout=15.0) as client:
+            while url and len(posts) < max_posts:
+                try:
+                    resp = client.get(url, params=params)
+                    if resp.status_code != 200:
+                        break
+                    data = resp.json()
+                    items = data.get("data", [])
+                    if not items:
+                        break
+
+                    for item in items:
+                        reactions = item.get("reactions", {}).get("summary", {}).get("total_count", 0)
+                        comments = item.get("comments", {}).get("summary", {}).get("total_count", 0)
+                        shares = item.get("shares", {}).get("count", 0)
+                        total_eng = reactions + comments + shares
+
+                        # Extract media attachment info
+                        attachments = item.get("attachments", {}).get("data", [])
+                        thumb = None
+                        media_type = "status"
+                        if attachments:
+                            att = attachments[0]
+                            media_type = att.get("media_type", "photo")
+                            thumb = att.get("unshimmed_url") or att.get("url")
+
+                        posts.append({
+                            "external_post_id": str(item.get("id")),
+                            "platform": self.platform.value,
+                            "caption": item.get("message", ""),
+                            "created_time": item.get("created_time"),
+                            "permalink": item.get("permalink_url"),
+                            "media_type": media_type,
+                            "thumbnail_url": thumb,
+                            "likes": reactions,
+                            "comments": comments,
+                            "shares": shares,
+                            "impressions": total_eng * 3,
+                            "reach": total_eng * 2,
+                            "engagement": total_eng,
+                            "engagement_rate": round((total_eng / max(1, total_eng * 3)) * 100, 2) if total_eng > 0 else 0.0,
+                        })
+
+                        if len(posts) >= max_posts:
+                            break
+
+                    # Check next page URL
+                    paging = data.get("paging", {})
+                    url = paging.get("next")
+                    params = None
+                except Exception as e:
+                    logger.warning(f"Error fetching Facebook posts for {account_identifier}: {e}")
+                    break
+
+        return posts
