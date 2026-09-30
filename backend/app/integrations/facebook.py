@@ -19,7 +19,7 @@ class FacebookAdapter(BasePlatformAdapter):
         client_id = settings.META_CLIENT_ID or "META_CLIENT_ID_PLACEHOLDER"
         uri = redirect_uri or settings.META_REDIRECT_URI
         scope = "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish"
-        return f"https://www.facebook.com/{self.api_version}/dialog/oauth?client_id={client_id}&redirect_uri={uri}&state={state}&scope={scope}&response_type=code"
+        return f"https://www.facebook.com/{self.api_version}/dialog/oauth?client_id={client_id}&redirect_uri={uri}&state={state}&scope={scope}&response_type=code&auth_type=rerequest"
 
     def exchange_code_for_token(self, code: str, redirect_uri: Optional[str] = None) -> Dict[str, Any]:
         client_id = settings.META_CLIENT_ID

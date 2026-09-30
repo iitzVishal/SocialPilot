@@ -18,10 +18,12 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from fastapi import HTTPException, status
+
 from app.models.user import User
 from app.models.campaign import Campaign
 from app.models.social_account import SocialAccount
-from app.models.enums import SocialAccountStatus
+from app.models.enums import SocialPlatform, SocialAccountStatus
 from app.services.team_service import TeamService
 from app.db.mongo import ensure_active_mongo_db
 
@@ -31,6 +33,19 @@ logger = logging.getLogger(__name__)
 def _verify_team_access(db: Session, user: User, team_id: int) -> None:
     """Raises 403/404 if user is not a member or owner of the team."""
     TeamService.get_team_by_id(db, team_id, user)
+
+
+def _verify_account_team_ownership(db: Session, team_id: int, account_id: Optional[int]) -> Optional[SocialAccount]:
+    """Raises 404 if account_id does not belong to the target team workspace."""
+    if account_id is not None:
+        acc = db.query(SocialAccount).filter(SocialAccount.id == account_id, SocialAccount.team_id == team_id).first()
+        if not acc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Social account not found or access unauthorized."
+            )
+        return acc
+    return None
 
 
 async def get_overview(
@@ -45,6 +60,7 @@ async def get_overview(
     Return a high-level analytics overview for the workspace or specific social account.
     """
     _verify_team_access(db, user, team_id)
+    _verify_account_team_ownership(db, team_id, account_id)
 
     now = datetime.now(timezone.utc)
     period_start = now - timedelta(days=days)
@@ -399,6 +415,7 @@ async def get_engagement_analytics(
     Supports platform, campaign, and individual account filtering.
     """
     _verify_team_access(db, user, team_id)
+    _verify_account_team_ownership(db, team_id, account_id)
     now = datetime.now(timezone.utc)
     period_start = now - timedelta(days=days)
 
@@ -695,6 +712,7 @@ async def get_audience_growth(
     Supports individual account and platform filtering with automatic fallback to PostgreSQL snapshots.
     """
     _verify_team_access(db, user, team_id)
+    _verify_account_team_ownership(db, team_id, account_id)
     now = datetime.now(timezone.utc)
     period_start = now - timedelta(days=days)
 
@@ -932,6 +950,7 @@ async def get_post_performance(
     Return paginated list of social posts and published media along with their engagement metrics.
     """
     _verify_team_access(db, user, team_id)
+    _verify_account_team_ownership(db, team_id, account_id)
     now = datetime.now(timezone.utc)
     period_start = now - timedelta(days=days)
 

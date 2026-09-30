@@ -32,11 +32,16 @@ def _get_default_platform_permissions(platform: SocialPlatform) -> Dict[str, boo
 
 def _verify_account_access(db: Session, user: User, account: SocialAccount) -> bool:
     """Check if the user is the owner or a member of the team managing the account."""
+    if user.role == UserRole.ADMINISTRATOR:
+        return True
     if account.user_id == user.id:
         return True
     if account.team_id:
         membership = db.query(TeamMember).filter_by(team_id=account.team_id, user_id=user.id).first()
         if membership:
+            return True
+        team = db.query(Team).filter_by(id=account.team_id, owner_id=user.id).first()
+        if team:
             return True
     return False
 
@@ -44,9 +49,36 @@ def _verify_account_access(db: Session, user: User, account: SocialAccount) -> b
 def connect_account(db: Session, user: User, account_in: SocialAccountCreate) -> SocialAccount:
     """
     Connect or re-authorize a social media account.
+    Enforces team authorization and prevents cross-team ownership hijacking.
     Encrypts access and refresh tokens before persisting to the database.
     """
-    # Check for existing account for this user and platform
+    # 1. If team_id is provided, verify user has permission to operate on that team
+    if account_in.team_id is not None:
+        from app.services.team_service import TeamService
+        TeamService.get_team_by_id(db, account_in.team_id, user)
+
+    # 2. Check for cross-team conflict: is this account already actively connected to another team?
+    existing_other_team = db.query(SocialAccount).filter(
+        SocialAccount.platform == account_in.platform,
+        SocialAccount.account_identifier == account_in.account_identifier,
+        SocialAccount.connection_status != SocialAccountStatus.REVOKED
+    ).first()
+
+    if existing_other_team:
+        # If connected to a different team
+        if existing_other_team.team_id is not None and account_in.team_id is not None and existing_other_team.team_id != account_in.team_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This social account is already connected to another team workspace. Please disconnect it from that workspace first."
+            )
+        # If owned personally by another user
+        if existing_other_team.user_id != user.id and existing_other_team.team_id is None and account_in.team_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This social account is already connected by another user."
+            )
+
+    # 3. Check for existing account record for this user and platform (reconnection)
     existing = db.query(SocialAccount).filter(
         SocialAccount.user_id == user.id,
         SocialAccount.platform == account_in.platform,
@@ -59,18 +91,27 @@ def connect_account(db: Session, user: User, account_in: SocialAccountCreate) ->
 
     if existing:
         # Reconnect / update existing account record
+        # Security: Reconnect cannot silently transfer account ownership across teams!
+        if existing.team_id is not None and account_in.team_id is not None and existing.team_id != account_in.team_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This social account is already connected to a different team workspace. Disconnect it before moving it."
+            )
+
         existing.account_name = account_in.account_name
         existing.access_token = encrypted_access
         existing.refresh_token = encrypted_refresh
         existing.token_expires_at = account_in.token_expires_at
         existing.platform_permissions = permissions
         existing.connection_status = SocialAccountStatus.CONNECTED
-        if account_in.team_id:
+        if existing.team_id is None and account_in.team_id is not None:
             existing.team_id = account_in.team_id
+
         db.commit()
         db.refresh(existing)
         return existing
 
+    # 4. Create new account
     new_account = SocialAccount(
         user_id=user.id,
         team_id=account_in.team_id,

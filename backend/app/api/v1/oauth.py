@@ -2,7 +2,7 @@ import json
 import logging
 import secrets
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
@@ -22,6 +22,7 @@ from app.schemas.social_account import (
     FacebookConnectPageResponse,
 )
 from app.services import social_account_service
+from app.services.team_service import TeamService
 from app.integrations import get_platform_adapter
 from app.core.config import settings
 from app.db.redis import get_redis_client
@@ -94,6 +95,7 @@ def _verify_provider_configured(provider: str):
 
 
 async def _save_oauth_state(state: str, payload: Dict[str, Any]):
+    """Persist OAuth state with 10-minute expiration."""
     try:
         redis = get_redis_client()
         if redis is not None:
@@ -105,6 +107,10 @@ async def _save_oauth_state(state: str, payload: Dict[str, Any]):
 
 
 async def _retrieve_and_delete_oauth_state(state: str) -> Optional[Dict[str, Any]]:
+    """
+    Atomically retrieve and delete OAuth state so it can only be consumed once.
+    Rejects expired states.
+    """
     payload = None
     try:
         redis = get_redis_client()
@@ -116,13 +122,30 @@ async def _retrieve_and_delete_oauth_state(state: str) -> Optional[Dict[str, Any
     except Exception as e:
         logger.warning(f"Redis state retrieval error: {e}")
 
-    if not payload and state in _IN_MEMORY_STATE_CACHE:
-        payload = _IN_MEMORY_STATE_CACHE.pop(state)
+    # Remove from in-memory cache as well
+    mem_payload = _IN_MEMORY_STATE_CACHE.pop(state, None)
+    if not payload:
+        payload = mem_payload
+
+    if not payload:
+        return None
+
+    # Check expiration timestamp
+    expires_at_str = payload.get("expires_at")
+    if expires_at_str:
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str)
+            if datetime.now(timezone.utc) > expires_at:
+                logger.warning(f"OAuth state {state} has expired ({expires_at_str})")
+                return None
+        except Exception:
+            pass
 
     return payload
 
 
 async def _save_oauth_session(session_token: str, payload: Dict[str, Any]):
+    """Persist temporary page selection OAuth session with 10-minute TTL."""
     try:
         redis = get_redis_client()
         if redis is not None:
@@ -134,6 +157,7 @@ async def _save_oauth_session(session_token: str, payload: Dict[str, Any]):
 
 
 async def _get_oauth_session(session_token: str) -> Optional[Dict[str, Any]]:
+    """Retrieve OAuth page selection session and enforce expiration check."""
     payload = None
     try:
         redis = get_redis_client()
@@ -147,10 +171,25 @@ async def _get_oauth_session(session_token: str) -> Optional[Dict[str, Any]]:
     if not payload and session_token in _IN_MEMORY_SESSION_CACHE:
         payload = _IN_MEMORY_SESSION_CACHE.get(session_token)
 
+    if not payload:
+        return None
+
+    # Validate expiration
+    expires_at_str = payload.get("expires_at")
+    if expires_at_str:
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str)
+            if datetime.now(timezone.utc) > expires_at:
+                await _delete_oauth_session(session_token)
+                return None
+        except Exception:
+            pass
+
     return payload
 
 
 async def _delete_oauth_session(session_token: str):
+    """Purge temporary OAuth page selection session."""
     try:
         redis = get_redis_client()
         if redis is not None:
@@ -166,7 +205,8 @@ async def authorize_oauth(
     provider: str,
     team_id: Optional[int] = Query(None, description="Optional target team workspace ID"),
     redirect: bool = Query(False, description="If True, issues HTTP 307 redirect directly to provider"),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     provider_clean = provider.lower()
     if provider_clean not in PROVIDER_KEY_MAP:
@@ -178,13 +218,31 @@ async def authorize_oauth(
     # Check provider credentials configured
     _verify_provider_configured(provider_clean)
 
-    # Generate secure random state token
+    # Determine and verify the target authorized team/workspace
+    resolved_team_id = team_id
+    if resolved_team_id is not None:
+        # Enforce team access: user must be an owner or member of this team
+        TeamService.get_team_by_id(db, resolved_team_id, current_user)
+    else:
+        # Resolve default team for user if available
+        user_teams = TeamService.get_teams_for_user(db, current_user)
+        if user_teams:
+            resolved_team_id = user_teams[0].id
+
+    # Generate cryptographically secure unique state & nonce
     state_token = secrets.token_urlsafe(32)
+    nonce = secrets.token_hex(16)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=600)
+
     state_payload = {
+        "state": state_token,
+        "nonce": nonce,
         "user_id": current_user.id,
-        "team_id": team_id,
+        "team_id": resolved_team_id,
         "provider": provider_clean,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": now.isoformat(),
+        "expires_at": expires_at.isoformat()
     }
     await _save_oauth_state(state_token, state_payload)
 
@@ -206,7 +264,8 @@ async def authorize_oauth(
 @router.get("/facebook/pages", response_model=FacebookPagesResponse, summary="Get Facebook Pages available in OAuth session")
 async def get_facebook_pages(
     session_token: str = Query(..., description="OAuth session token from callback redirect"),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """
     Retrieve Facebook Pages available from the current Meta OAuth session.
@@ -225,6 +284,16 @@ async def get_facebook_pages(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access to this OAuth session is forbidden."
         )
+
+    if session_data.get("provider") != "facebook":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OAuth session provider."
+        )
+
+    session_team_id = session_data.get("team_id")
+    if session_team_id is not None:
+        TeamService.get_team_by_id(db, session_team_id, current_user)
 
     safe_pages = []
     for p in session_data.get("pages", []):
@@ -275,6 +344,23 @@ async def connect_facebook_page(
             detail="Access to this OAuth session is forbidden."
         )
 
+    if session_data.get("provider") != "facebook":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OAuth session provider."
+        )
+
+    # Enforce server-side authoritative team_id from OAuth session
+    effective_team_id = session_data.get("team_id")
+    if body.team_id is not None and effective_team_id is not None and body.team_id != effective_team_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Target team ID does not match the authorized OAuth session."
+        )
+
+    if effective_team_id is not None:
+        TeamService.get_team_by_id(db, effective_team_id, current_user)
+
     pages = session_data.get("pages", [])
     selected_page = next((p for p in pages if str(p.get("page_id")) == str(body.page_id)), None)
     if not selected_page:
@@ -282,8 +368,6 @@ async def connect_facebook_page(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Facebook Page '{body.page_id}' was not found in the current OAuth session."
         )
-
-    effective_team_id = body.team_id if body.team_id is not None else session_data.get("team_id")
 
     # Connect Facebook Page
     page_token = selected_page.get("page_access_token") or session_data.get("user_access_token")
@@ -351,7 +435,7 @@ async def connect_facebook_page(
         except Exception as e:
             logger.warning(f"Initial sync for Instagram account {ig_account.id} failed: {e}")
 
-    # Invalidate session token after successful connection
+    # Invalidate session token after successful connection so it cannot be reused
     await _delete_oauth_session(body.session_token)
 
     msg = f"Successfully connected Facebook Page '{fb_account.account_name}'"
@@ -437,13 +521,16 @@ async def oauth_callback(
 
             if pages:
                 session_token = secrets.token_urlsafe(32)
+                now = datetime.now(timezone.utc)
                 session_payload = {
+                    "session_token": session_token,
                     "user_id": user_id,
                     "team_id": team_id,
                     "provider": "facebook",
                     "user_access_token": access_token,
                     "pages": pages,
-                    "created_at": datetime.now(timezone.utc).isoformat()
+                    "created_at": now.isoformat(),
+                    "expires_at": (now + timedelta(seconds=600)).isoformat()
                 }
                 await _save_oauth_session(session_token, session_payload)
 

@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Lock,
   ExternalLink,
+  Info,
 } from 'lucide-react';
 import {
   FacebookIcon,
@@ -599,9 +600,19 @@ export const AccountsPage = () => {
           })}
         </div>
 
-        <div className="mt-4 rounded-xl p-3 text-[11px] border" style={{ background: 'var(--active-nav-bg)', borderColor: 'var(--sp-border)', color: 'var(--sp-text-secondary)' }}>
-          <ShieldCheck className="h-4 w-4 inline mr-1 text-emerald-500" aria-hidden="true" />
-          <strong>Secure Authentication:</strong> You will be redirected to the provider's official login page. Access tokens are encrypted with AES-256 before storage.
+        <div className="mt-4 space-y-2">
+          <div className="rounded-xl p-3 text-[11px] border flex items-start gap-2" style={{ background: 'var(--active-nav-bg)', borderColor: 'var(--sp-border)', color: 'var(--sp-text-secondary)' }}>
+            <ShieldCheck className="h-4 w-4 mt-0.5 flex-shrink-0 text-emerald-500" aria-hidden="true" />
+            <div>
+              <strong>Secure Multi-Tenant Isolation:</strong> Every connection is cryptographically bound to your active workspace. Access tokens are encrypted with AES-256 at rest and never exposed.
+            </div>
+          </div>
+          <div className="rounded-xl p-3 text-[11px] border flex items-start gap-2 bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400">
+            <Info className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <div>
+              <strong>Browser Session Notice:</strong> You're connecting a Facebook or Instagram account through Meta. Meta may use the Facebook account currently signed in to this browser. To connect a different Facebook profile, switch accounts in Meta's login dialog or log out of facebook.com in this browser first.
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-end pt-4">
