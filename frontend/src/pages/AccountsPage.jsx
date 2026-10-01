@@ -497,7 +497,7 @@ export const AccountsPage = () => {
             const isExpired = account.is_token_expired;
             const brandStyle = platformBrandStyles[account.platform] || platformBrandStyles.facebook;
             const avatarUrl = account.platform_permissions?.picture_url || account.platform_permissions?.avatar_url || account.platform_permissions?.profile_picture_url;
-            const category = account.platform_permissions?.category;
+            const category = account.platform_permissions?.category || account.platform_permissions?.account_type;
 
             return (
               <Card key={account.id} hover className="flex flex-col justify-between">
@@ -593,17 +593,32 @@ export const AccountsPage = () => {
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-400 italic">
-                          Not available from {account.platform === 'instagram' ? 'Instagram' : 'Meta'} API
+                          {account.platform === 'instagram' ? 'Not available from Instagram API' : 'Not available from Meta API'}
                         </span>
                       )}
                     </div>
-                    {account.platform_permissions?.following_count !== undefined && account.platform_permissions?.following_count !== null && (
+                    {account.platform === 'instagram' ? (
                       <div className="flex justify-between text-slate-500">
                         <span>Following:</span>
-                        <span className="font-bold text-slate-700 dark:text-slate-300">
-                          {Number(account.platform_permissions.following_count).toLocaleString()}
-                        </span>
+                        {account.platform_permissions?.following_count !== undefined && account.platform_permissions?.following_count !== null ? (
+                          <span className="font-bold text-slate-700 dark:text-slate-300">
+                            {Number(account.platform_permissions.following_count).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">
+                            Not available from Instagram API
+                          </span>
+                        )}
                       </div>
+                    ) : (
+                      account.platform_permissions?.following_count !== undefined && account.platform_permissions?.following_count !== null && (
+                        <div className="flex justify-between text-slate-500">
+                          <span>Following:</span>
+                          <span className="font-bold text-slate-700 dark:text-slate-300">
+                            {Number(account.platform_permissions.following_count).toLocaleString()}
+                          </span>
+                        </div>
+                      )
                     )}
                     <div className="flex justify-between text-slate-500">
                       <span>Total Posts:</span>
@@ -613,7 +628,7 @@ export const AccountsPage = () => {
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-400 italic">
-                          Not available from {account.platform === 'instagram' ? 'Instagram' : 'Meta'} API
+                          {account.platform === 'instagram' ? 'Not available from Instagram API' : 'Not available from Meta API'}
                         </span>
                       )}
                     </div>
