@@ -355,15 +355,21 @@ export const AccountsPage = () => {
             </div>
 
             <div className="space-y-1">
-              <h2 className="text-lg sm:text-xl font-bold font-heading" style={{ color: 'var(--sp-text)' }}>
-                {connectionSuccess.platform === 'instagram'
-                  ? 'Instagram Connected Successfully'
-                  : `${connectionSuccess.platform.charAt(0).toUpperCase() + connectionSuccess.platform.slice(1)} Connected Successfully`}
+              <h2 className="text-lg sm:text-xl font-bold font-heading flex items-center justify-center gap-1.5" style={{ color: 'var(--sp-text)' }}>
+                <span className="text-emerald-500">✓</span>
+                <span>
+                  {connectionSuccess.platform === 'instagram'
+                    ? 'Instagram Connected'
+                    : `${connectionSuccess.platform.charAt(0).toUpperCase() + connectionSuccess.platform.slice(1)} Connected`}
+                </span>
               </h2>
-              <p className="text-xs sm:text-sm font-medium" style={{ color: 'var(--sp-text-secondary)' }}>
+              <p className="text-xs sm:text-sm font-semibold" style={{ color: 'var(--sp-text-secondary)' }}>
                 {connectionSuccess.platform === 'instagram' && !connectionSuccess.accountName.startsWith('@')
                   ? `@${connectionSuccess.accountName}`
                   : connectionSuccess.accountName}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Your {connectionSuccess.platform === 'instagram' ? 'Instagram' : connectionSuccess.platform} account is now connected successfully.
               </p>
             </div>
 
@@ -532,13 +538,17 @@ export const AccountsPage = () => {
                     </div>
                     <Badge
                       variant={
-                        account.connection_status === 'connected'
+                        account.platform_permissions?.sync_status === 'pending'
+                          ? 'warning'
+                          : account.connection_status === 'connected'
                           ? (isExpired ? 'warning' : 'success')
                           : (account.connection_status === 'expired' ? 'warning' : 'danger')
                       }
                       size="xs"
                     >
-                      {account.connection_status === 'connected'
+                      {account.platform_permissions?.sync_status === 'pending'
+                        ? (account.platform === 'instagram' ? 'Instagram Connected — Sync Pending' : 'Connected — Sync Pending')
+                        : account.connection_status === 'connected'
                         ? (isExpired ? 'Expired' : 'Connected')
                         : (account.connection_status === 'expired' ? 'Expired' : (account.connection_status === 'revoked' ? 'Revoked' : 'Disconnected'))}
                     </Badge>

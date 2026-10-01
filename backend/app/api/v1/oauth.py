@@ -397,6 +397,13 @@ async def connect_facebook_page(
         db.refresh(fb_account)
     except Exception as e:
         logger.warning(f"Initial sync for Facebook Page {fb_account.id} failed: {e}")
+        fb_account.platform_permissions = {
+            **(fb_account.platform_permissions or {}),
+            "sync_status": "pending",
+            "sync_error": str(e)
+        }
+        db.commit()
+        db.refresh(fb_account)
 
     # If user opted to connect linked Instagram Professional account
     ig_account = None
@@ -435,6 +442,13 @@ async def connect_facebook_page(
             db.refresh(ig_account)
         except Exception as e:
             logger.warning(f"Initial sync for Instagram account {ig_account.id} failed: {e}")
+            ig_account.platform_permissions = {
+                **(ig_account.platform_permissions or {}),
+                "sync_status": "pending",
+                "sync_error": str(e)
+            }
+            db.commit()
+            db.refresh(ig_account)
 
     # Invalidate session token after successful connection so it cannot be reused
     await _delete_oauth_session(body.session_token)
@@ -469,9 +483,9 @@ async def oauth_callback(
         if "permission" in raw_err.lower() or "scope" in raw_err.lower():
             friendly_msg = "Meta rejected one or more requested permissions. Please verify that required permissions are added to your Meta App and that your Facebook account is added under App Roles in the Meta Developer Console."
         elif "denied" in raw_err.lower() or "cancel" in raw_err.lower():
-            friendly_msg = "OAuth connection was cancelled or denied by user."
+            friendly_msg = "Connection cancelled"
         else:
-            friendly_msg = f"OAuth error: {raw_err}"
+            friendly_msg = f"Instagram connection failed: {raw_err}" if provider_clean == "instagram" else f"Connection failed: {raw_err}"
         msg = urllib.parse.quote(friendly_msg)
         return RedirectResponse(
             url=f"{frontend_base}/dashboard/accounts?oauth=error&status=error&platform={provider_clean}&provider={provider_clean}&message={msg}",

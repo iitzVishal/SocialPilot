@@ -233,9 +233,16 @@ def synchronize_account(db: Session, user: User, account_id: int) -> Dict[str, A
         account.connection_status = SocialAccountStatus.REVOKED
     elif sync_result.get("is_token_expired") or "expired" in sync_result.get("message", "").lower():
         account.connection_status = SocialAccountStatus.EXPIRED
+    elif sync_result.get("status") == "error":
+        current_perms = dict(account.platform_permissions or {})
+        current_perms["sync_status"] = "pending"
+        current_perms["sync_error"] = sync_result.get("message", "Synchronization failed")
+        account.platform_permissions = current_perms
     elif sync_result.get("status") == "synchronized":
         account.connection_status = SocialAccountStatus.CONNECTED
         current_perms = dict(account.platform_permissions or {})
+        current_perms["sync_status"] = "synchronized"
+        current_perms.pop("sync_error", None)
         if sync_result.get("avatar_url"):
             current_perms["avatar_url"] = sync_result["avatar_url"]
             current_perms["picture_url"] = sync_result["avatar_url"]
