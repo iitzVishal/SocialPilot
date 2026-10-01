@@ -49,7 +49,8 @@ def _get_provider_redirect_uri(provider: str) -> str:
     if provider == "facebook":
         return settings.META_REDIRECT_URI
     elif provider == "instagram":
-        return settings.INSTAGRAM_REDIRECT_URI
+        # Instagram uses Facebook Login flow, so callback routes to the same facebook callback
+        return settings.META_REDIRECT_URI
     elif provider == "linkedin":
         return settings.LINKEDIN_REDIRECT_URI
     elif provider in ("x", "twitter"):
@@ -516,14 +517,19 @@ async def oauth_callback(
         if not access_token:
             raise ValueError("Token endpoint did not return an access token.")
 
-        # Facebook flow: Fetch Facebook Pages managed by user
-        if provider_clean == "facebook":
+        # Facebook/Instagram flow: Fetch Facebook Pages managed by user
+        # NOTE: Instagram is connected via a linked Facebook Page (instagram_business_account field).
+        # When provider=instagram, OAuth redirects to /facebook/callback (shared redirect URI),
+        # so provider_clean='facebook' here. Use state_payload["provider"] to recover the original intent.
+        original_provider = state_payload.get("provider", provider_clean)
+        if provider_clean in ("facebook", "instagram") or original_provider in ("facebook", "instagram"):
             pages = []
-            if hasattr(adapter, "get_user_pages"):
+            fb_adapter = get_platform_adapter(SocialPlatform.FACEBOOK)
+            if hasattr(fb_adapter, "get_user_pages"):
                 try:
-                    pages = adapter.get_user_pages(access_token)
+                    pages = fb_adapter.get_user_pages(access_token)
                 except Exception as e:
-                    logger.warning(f"Error fetching Facebook pages: {e}")
+                    logger.warning(f"Error fetching Facebook pages for {original_provider} flow: {e}")
                     pages = []
 
             if pages:
@@ -534,6 +540,7 @@ async def oauth_callback(
                     "user_id": user_id,
                     "team_id": team_id,
                     "provider": "facebook",
+                    "preferred_platform": original_provider,  # hint for UI: 'instagram' or 'facebook'
                     "user_access_token": access_token,
                     "pages": pages,
                     "created_at": now.isoformat(),
@@ -541,52 +548,27 @@ async def oauth_callback(
                 }
                 await _save_oauth_session(session_token, session_payload)
 
+                # Pass the original provider so frontend can pre-select Instagram toggle
                 return RedirectResponse(
-                    url=f"{frontend_base}/dashboard/accounts?status=select_pages&session_token={session_token}&platform=facebook",
+                    url=f"{frontend_base}/dashboard/accounts?status=select_pages&session_token={session_token}&platform={original_provider}",
                     status_code=307
                 )
             else:
-                # If no pages found, check if profile exists (or notify user to create a page)
-                msg = urllib.parse.quote("No Facebook Pages found. You must be an admin of at least one Facebook Page to connect.")
+                if original_provider == "instagram":
+                    msg = urllib.parse.quote(
+                        "No Facebook Pages found linked to your account. "
+                        "To connect Instagram, you must manage at least one Facebook Page "
+                        "that has an Instagram Professional/Business account linked to it. "
+                        "Please create a Facebook Page and connect your Instagram Professional account to it first."
+                    )
+                else:
+                    msg = urllib.parse.quote(
+                        "No Facebook Pages found. You must be an admin of at least one Facebook Page to connect."
+                    )
                 return RedirectResponse(
-                    url=f"{frontend_base}/dashboard/accounts?status=error&provider=facebook&message={msg}",
+                    url=f"{frontend_base}/dashboard/accounts?status=error&provider={original_provider}&message={msg}",
                     status_code=307
                 )
-
-        # Instagram flow: Verify professional account
-        if provider_clean == "instagram":
-            profile = adapter.get_user_profile(access_token)
-            account_type = str(profile.get("account_type", "")).upper()
-            if account_type == "PERSONAL":
-                msg = urllib.parse.quote("An Instagram Professional/Business account is not connected to this Facebook Page. Personal accounts cannot be connected.")
-                return RedirectResponse(
-                    url=f"{frontend_base}/dashboard/accounts?status=error&provider=instagram&message={msg}",
-                    status_code=307
-                )
-
-            expires_at = None
-            if expires_in:
-                expires_at = datetime.fromtimestamp(
-                    datetime.now(timezone.utc).timestamp() + int(expires_in),
-                    tz=timezone.utc
-                )
-
-            account_in = SocialAccountCreate(
-                platform=SocialPlatform.INSTAGRAM,
-                account_identifier=profile.get("account_identifier", f"ig_{user_id}"),
-                account_name=profile.get("account_name", "Instagram Account"),
-                access_token=access_token,
-                refresh_token=refresh_token,
-                token_expires_at=expires_at,
-                platform_permissions={"account_type": account_type},
-                team_id=team_id
-            )
-            account = social_account_service.connect_account(db, user, account_in)
-            acc_name = urllib.parse.quote(account.account_name)
-            return RedirectResponse(
-                url=f"{frontend_base}/dashboard/accounts?status=success&platform=instagram&account_name={acc_name}",
-                status_code=307
-            )
 
         # Other platforms (LinkedIn, X, YouTube, Pinterest)
         profile = adapter.get_user_profile(access_token)

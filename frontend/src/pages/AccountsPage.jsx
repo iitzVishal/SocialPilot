@@ -56,6 +56,10 @@ export const AccountsPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState(null);
 
+  // Connection success animation state
+  const [connectionSuccess, setConnectionSuccess] = useState(null); // { platform, accountName }
+  const [syncComplete, setSyncComplete] = useState(false);
+
   // Modals state
   const [isConnectOpen, setIsConnectOpen] = useState(false);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
@@ -75,6 +79,8 @@ export const AccountsPage = () => {
   const [connectInstagram, setConnectInstagram] = useState(false);
   const [pageSelectLoading, setPageSelectLoading] = useState(false);
   const [pageSelectError, setPageSelectError] = useState('');
+  // Track which platform triggered the page flow (for Instagram pre-selection)
+  const [preferredPlatform, setPreferredPlatform] = useState(null);
 
   // Permissions Form State
   const [customPermissions, setCustomPermissions] = useState({});
@@ -104,17 +110,22 @@ export const AccountsPage = () => {
     }
   };
 
-  const loadAvailablePages = async (token) => {
+  const loadAvailablePages = async (token, platformHint) => {
     setPageSelectLoading(true);
     setPageSelectError('');
     setIsPageSelectOpen(true);
+    setPreferredPlatform(platformHint || null);
     try {
       const res = await oauthAPI.getAvailableFacebookPages(token);
       const pages = res.data?.pages || [];
       setAvailablePages(pages);
       if (pages.length > 0) {
         setSelectedPageId(pages[0].page_id);
-        setConnectInstagram(Boolean(pages[0].has_instagram));
+        // Pre-select Instagram toggle if:
+        // 1. The platform hint is 'instagram', OR
+        // 2. The first page already has an Instagram account linked
+        const firstPageHasIg = Boolean(pages[0].has_instagram);
+        setConnectInstagram(platformHint === 'instagram' ? true : firstPageHasIg);
       }
     } catch (err) {
       console.error('Failed to load available Facebook pages:', err);
@@ -136,9 +147,18 @@ export const AccountsPage = () => {
         connect_instagram: connectInstagram,
         team_id: activeTeamId || null,
       });
-      showToast(res.data?.message || 'Connected Facebook Page successfully!', 'success');
       setIsPageSelectOpen(false);
-      fetchAccounts(selectedPlatform);
+      await fetchAccounts(selectedPlatform);
+      // Determine which platform to celebrate
+      const platform = connectInstagram && res.data?.instagram_account ? 'instagram' : 'facebook';
+      const acctName = connectInstagram && res.data?.instagram_account
+        ? (res.data.instagram_account.account_name || res.data.instagram_account.account_identifier)
+        : (res.data?.facebook_account?.account_name || 'your account');
+      // Show success animation
+      setSyncComplete(false);
+      setConnectionSuccess({ platform, accountName: acctName });
+      setTimeout(() => setSyncComplete(true), 2200);
+      setTimeout(() => setConnectionSuccess(null), 6000);
     } catch (err) {
       console.error('Connect page error:', err);
       const msg = err.response?.data?.detail || 'Failed to connect selected page.';
@@ -160,11 +180,17 @@ export const AccountsPage = () => {
 
     if (statusParam === 'select_pages' && sessionTokenParam) {
       setActiveSessionToken(sessionTokenParam);
-      loadAvailablePages(sessionTokenParam);
+      // Pass the platform hint (e.g. 'instagram') so we can pre-select the toggle
+      loadAvailablePages(sessionTokenParam, providerParam);
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (statusParam === 'success') {
-      const name = accountNameParam ? decodeURIComponent(accountNameParam) : (providerParam || 'Social');
-      showToast(`Connected ${name} account successfully via official OAuth 2.0!`, 'success');
+      const name = accountNameParam ? decodeURIComponent(accountNameParam) : null;
+      const platform = providerParam || 'social';
+      // Show success animation for direct-success connections (non-Meta platforms)
+      setSyncComplete(false);
+      setConnectionSuccess({ platform, accountName: name || platform });
+      setTimeout(() => setSyncComplete(true), 2200);
+      setTimeout(() => setConnectionSuccess(null), 6000);
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (statusParam === 'error') {
       const msg = messageParam ? decodeURIComponent(messageParam) : `OAuth authorization failed for ${providerParam || 'provider'}.`;
@@ -277,6 +303,91 @@ export const AccountsPage = () => {
 
   return (
     <div className="space-y-6">
+
+      {/* ── Connection Success Overlay ── */}
+      {connectionSuccess && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)' }}
+        >
+          <div
+            className="relative flex flex-col items-center gap-5 rounded-3xl border p-10 shadow-2xl animate-sp-fade-in-up"
+            style={{
+              background: 'var(--sp-card)',
+              borderColor: 'var(--sp-border)',
+              maxWidth: 360,
+              width: '90vw',
+            }}
+          >
+            {/* Animated ring */}
+            <div className="relative flex items-center justify-center">
+              <div
+                className="absolute h-28 w-28 rounded-full animate-ping opacity-20"
+                style={{ background: connectionSuccess.platform === 'instagram' ? '#E4405F' : '#1877F2' }}
+              />
+              <div
+                className="flex h-24 w-24 items-center justify-center rounded-full border-4"
+                style={{
+                  borderColor: connectionSuccess.platform === 'instagram' ? '#E4405F' : '#1877F2',
+                  background: connectionSuccess.platform === 'instagram'
+                    ? 'linear-gradient(135deg, rgba(228,64,95,0.15), rgba(131,58,180,0.15))'
+                    : 'rgba(24,119,242,0.12)',
+                }}
+              >
+                <CheckCircle2
+                  className="h-12 w-12"
+                  style={{ color: connectionSuccess.platform === 'instagram' ? '#E4405F' : '#1877F2' }}
+                />
+              </div>
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h2 className="text-xl font-bold font-heading" style={{ color: 'var(--sp-text)' }}>
+                Account Connected!
+              </h2>
+              <p className="text-sm font-semibold capitalize" style={{ color: 'var(--sp-text-secondary)' }}>
+                {connectionSuccess.platform} — {connectionSuccess.accountName}
+              </p>
+            </div>
+
+            {/* Sync status */}
+            <div
+              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border"
+              style={{
+                background: syncComplete ? 'rgba(16,185,129,0.12)' : 'var(--sp-surface-2)',
+                borderColor: syncComplete ? 'rgba(16,185,129,0.3)' : 'var(--sp-border)',
+                color: syncComplete ? 'rgb(5,150,105)' : 'var(--sp-text-muted)',
+              }}
+            >
+              {syncComplete ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  All data synced successfully
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  Syncing account data...
+                </>
+              )}
+            </div>
+
+            {syncComplete && (
+              <button
+                type="button"
+                onClick={() => setConnectionSuccess(null)}
+                className="mt-1 text-xs font-semibold underline underline-offset-2 cursor-pointer"
+                style={{ color: 'var(--sp-text-muted)' }}
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {toastMessage && (
         <div
@@ -426,7 +537,11 @@ export const AccountsPage = () => {
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleInitiateOAuth(account.platform)}
+                        onClick={() => {
+                          // Instagram reconnects via Facebook Login flow (which discovers linked IG accounts)
+                          const reconnectProvider = account.platform === 'instagram' ? 'facebook' : account.platform;
+                          handleInitiateOAuth(reconnectProvider);
+                        }}
                         className="text-[11px] font-bold text-amber-700 dark:text-amber-300 underline hover:no-underline cursor-pointer"
                       >
                         Reconnect
@@ -611,19 +726,20 @@ export const AccountsPage = () => {
           <div className="rounded-xl p-3 text-[11px] border space-y-2 bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
               <FacebookIcon className="h-3.5 w-3.5 text-[#1877F2]" />
-              <span>Facebook &amp; Instagram Account Selection:</span>
+              <InstagramIcon className="h-3.5 w-3.5 text-[#E4405F]" />
+              <span>Facebook &amp; Instagram — How it works:</span>
             </div>
             <p className="text-slate-600 dark:text-slate-400">
-              Meta uses your active browser session. When connecting, you can choose:
+              Both Facebook and Instagram connect via <strong>Facebook Login</strong> (Meta&apos;s unified API). You&apos;ll see a Facebook dialog — then choose which Page and/or Instagram Professional account to link.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
               <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">✓ Continue with current Facebook account</span>
-                <span className="text-[10px] text-slate-500">Connects the Facebook Page or Instagram Business profile linked to your active Facebook browser session.</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">📘 Facebook Pages</span>
+                <span className="text-[10px] text-slate-500">Select any Facebook Page you admin to connect it for posting and analytics.</span>
               </div>
               <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">⟳ Use another Facebook account</span>
-                <span className="text-[10px] text-slate-500">In Meta&apos;s dialog, select &quot;Log into another account&quot; or log out of facebook.com before connecting.</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">📸 Instagram Business</span>
+                <span className="text-[10px] text-slate-500">If your Page has a linked Instagram Professional account, you can connect it too in the same step.</span>
               </div>
             </div>
           </div>
@@ -756,8 +872,12 @@ export const AccountsPage = () => {
       <Modal
         isOpen={isPageSelectOpen}
         onClose={() => setIsPageSelectOpen(false)}
-        title="Select Facebook Page to Connect"
-        description="Choose which Facebook Page you want to manage. If an Instagram Professional account is connected to the Page, you can also link it now."
+        title={preferredPlatform === 'instagram' ? 'Connect Instagram via Facebook Page' : 'Select Facebook Page to Connect'}
+        description={
+          preferredPlatform === 'instagram'
+            ? 'Instagram Professional/Business accounts are linked to Facebook Pages. Select your Page below — your linked Instagram account will be pre-selected for connection.'
+            : 'Choose which Facebook Page you want to manage. If an Instagram Professional account is connected to the Page, you can also link it now.'
+        }
       >
         {pageSelectError && (
           <div className="mb-4 flex items-start gap-2 rounded-xl bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-400 border border-rose-500/20">

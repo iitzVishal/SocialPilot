@@ -119,7 +119,9 @@ async def test_instagram_authorization_endpoint(test_user):
             data = resp.json()
             assert "authorization_url" in data
             assert "state" in data
-            assert "instagram.com" in data["authorization_url"]
+            # Instagram now uses Facebook Login dialog (not api.instagram.com)
+            # because Instagram Professional accounts are discovered via Facebook Pages
+            assert "facebook.com" in data["authorization_url"]
             assert "test_meta_client_id_123" in data["authorization_url"]
     finally:
         settings.META_CLIENT_ID = original_id
@@ -207,6 +209,11 @@ async def test_facebook_callback_success_account_creation(test_user):
 
 @pytest.mark.asyncio
 async def test_instagram_callback_success_account_creation(test_user):
+    """
+    Instagram OAuth now flows through Facebook Login → Page selection → Instagram linked account.
+    When provider=instagram, the callback still returns select_pages (same as Facebook flow).
+    The user then selects a Facebook Page that has an Instagram Business account linked.
+    """
     user_id = test_user["user_id"]
     state_token = f"valid_ig_state_{uuid.uuid4().hex[:6]}"
     await _save_oauth_state(state_token, {
@@ -216,33 +223,61 @@ async def test_instagram_callback_success_account_creation(test_user):
         "created_at": "2026-09-03T12:00:00Z"
     })
 
-    mock_token_resp = {"access_token": "mock_ig_access_token_888", "expires_in": 3600}
-    mock_profile_resp = {"account_identifier": "ig_user_555", "account_name": "Test Instagram Account", "account_type": "BUSINESS"}
+    mock_token_resp = {"access_token": "mock_meta_access_token_888", "expires_in": 3600}
+    mock_pages_resp = [
+        {
+            "page_id": "ig_page_777",
+            "name": "Test Business Page",
+            "category": "Brand",
+            "picture_url": "https://example.com/avatar.jpg",
+            "page_access_token": "mock_page_token_777",
+            "instagram_account": {
+                "id": "ig_biz_555",
+                "username": "testinstagram",
+                "name": "Test Instagram",
+                "profile_picture_url": None,
+            }
+        }
+    ]
 
-    with patch("app.integrations.instagram.InstagramAdapter.exchange_code_for_token", return_value=mock_token_resp), \
-         patch("app.integrations.instagram.InstagramAdapter.get_user_profile", return_value=mock_profile_resp):
+    with patch("app.integrations.facebook.FacebookAdapter.exchange_code_for_token", return_value=mock_token_resp), \
+         patch("app.integrations.facebook.FacebookAdapter.get_user_pages", return_value=mock_pages_resp):
 
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
             base_url="http://test",
             follow_redirects=False
         ) as client:
+            # Instagram callback routes to /facebook/callback since they share the same redirect_uri
             resp = await client.get(
-                f"/api/v1/oauth/instagram/callback?code=mock_code_456&state={state_token}"
+                f"/api/v1/oauth/facebook/callback?code=mock_code_ig_456&state={state_token}"
             )
             assert resp.status_code == 307
-            assert "status=success" in resp.headers["location"]
-            assert "platform=instagram" in resp.headers["location"]
+            loc = resp.headers["location"]
+            # Should show page selector (same as Facebook flow)
+            assert "status=select_pages" in loc
+            assert "session_token=" in loc
+            # platform hint should be passed
+            assert "platform=instagram" in loc or "platform=facebook" in loc
 
-            # Verify SocialAccount record created in DB
-            session = test_user["session"]
-            acc = session.query(SocialAccount).filter_by(
-                user_id=user_id,
-                platform=SocialPlatform.INSTAGRAM,
-                account_identifier="ig_user_555"
-            ).first()
-            assert acc is not None
-            assert acc.account_name == "Test Instagram Account"
+            # Extract session token and connect the page WITH Instagram
+            session_token = loc.split("session_token=")[1].split("&")[0]
+            token = test_user["token"]
+
+            connect_resp = await client.post(
+                "/api/v1/oauth/facebook/connect-page",
+                json={
+                    "session_token": session_token,
+                    "page_id": "ig_page_777",
+                    "connect_instagram": True
+                },
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            assert connect_resp.status_code == 200
+            connect_data = connect_resp.json()
+            assert connect_data["status"] == "success"
+            assert connect_data["instagram_account"] is not None
+            assert connect_data["instagram_account"]["account_identifier"] == "ig_biz_555"
 
 
 @pytest.mark.asyncio
