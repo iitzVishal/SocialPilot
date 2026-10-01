@@ -21,7 +21,7 @@ class FacebookAdapter(BasePlatformAdapter):
         base_url = f"https://www.facebook.com/{self.api_version}/dialog/oauth?client_id={client_id}&redirect_uri={uri}&state={state}&response_type=code&auth_type=rerequest"
         if settings.META_CONFIG_ID and settings.META_CONFIG_ID.strip():
             return f"{base_url}&config_id={settings.META_CONFIG_ID.strip()}&override_default_response_type=true"
-        scope = settings.META_OAUTH_SCOPES
+        scope = getattr(settings, "FACEBOOK_OAUTH_SCOPES", settings.META_OAUTH_SCOPES)
         return f"{base_url}&scope={scope}"
 
     def exchange_code_for_token(self, code: str, redirect_uri: Optional[str] = None) -> Dict[str, Any]:

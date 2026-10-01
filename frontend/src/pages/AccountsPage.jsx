@@ -565,11 +565,7 @@ export const AccountsPage = () => {
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          // Instagram reconnects via Facebook Login flow (which discovers linked IG accounts)
-                          const reconnectProvider = account.platform === 'instagram' ? 'facebook' : account.platform;
-                          handleInitiateOAuth(reconnectProvider);
-                        }}
+                        onClick={() => handleInitiateOAuth(account.platform)}
                         className="text-[11px] font-bold text-amber-700 dark:text-amber-300 underline hover:no-underline cursor-pointer"
                       >
                         Reconnect
@@ -776,21 +772,18 @@ export const AccountsPage = () => {
           
           <div className="rounded-xl p-3 text-[11px] border space-y-2 bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
-              <FacebookIcon className="h-3.5 w-3.5 text-[#1877F2]" />
               <InstagramIcon className="h-3.5 w-3.5 text-[#E4405F]" />
-              <span>Facebook &amp; Instagram — How it works:</span>
+              <FacebookIcon className="h-3.5 w-3.5 text-[#1877F2]" />
+              <span>Independent Platform Connections:</span>
             </div>
-            <p className="text-slate-600 dark:text-slate-400">
-              Both Facebook and Instagram connect via <strong>Facebook Login</strong> (Meta&apos;s unified API). You&apos;ll see a Facebook dialog — then choose which Page and/or Instagram Professional account to link.
-            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
               <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">📘 Facebook Pages</span>
-                <span className="text-[10px] text-slate-500">Select any Facebook Page you admin to connect it for posting and analytics.</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">📸 Instagram</span>
+                <span className="text-[10px] text-slate-500">Direct Instagram authorization. Connects your Instagram Professional account for direct publishing and insights.</span>
               </div>
               <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">📸 Instagram Business</span>
-                <span className="text-[10px] text-slate-500">If your Page has a linked Instagram Professional account, you can connect it too in the same step.</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">📘 Facebook</span>
+                <span className="text-[10px] text-slate-500">Direct Facebook authorization. Select any Facebook Page you manage to connect for posting and analytics.</span>
               </div>
             </div>
           </div>

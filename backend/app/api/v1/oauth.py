@@ -49,7 +49,9 @@ def _get_provider_redirect_uri(provider: str) -> str:
     if provider == "facebook":
         return settings.META_REDIRECT_URI
     elif provider == "instagram":
-        # Instagram uses Facebook Login flow, so callback routes to the same facebook callback
+        auth_type = getattr(settings, "INSTAGRAM_AUTH_TYPE", "instagram_login")
+        if auth_type == "instagram_login":
+            return settings.INSTAGRAM_REDIRECT_URI
         return settings.META_REDIRECT_URI
     elif provider == "linkedin":
         return settings.LINKEDIN_REDIRECT_URI
@@ -536,6 +538,67 @@ async def oauth_callback(
         # When provider=instagram, OAuth redirects to /facebook/callback (shared redirect URI),
         # so provider_clean='facebook' here. Use state_payload["provider"] to recover the original intent.
         original_provider = state_payload.get("provider", provider_clean)
+
+        # 1. Instagram Direct Flow (via Instagram Login)
+        if (provider_clean == "instagram" or original_provider == "instagram") and getattr(settings, "INSTAGRAM_AUTH_TYPE", "instagram_login") == "instagram_login":
+            profile = adapter.get_user_profile(access_token)
+            expires_at = None
+            if expires_in:
+                expires_at = datetime.fromtimestamp(
+                    datetime.now(timezone.utc).timestamp() + int(expires_in),
+                    tz=timezone.utc
+                )
+
+            account_identifier = str(profile.get("account_identifier") or f"ig_{user_id}")
+            account_name = profile.get("username") or profile.get("account_name") or f"ig_{account_identifier}"
+
+            account_in = SocialAccountCreate(
+                platform=SocialPlatform.INSTAGRAM,
+                account_identifier=account_identifier,
+                account_name=account_name,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_expires_at=expires_at,
+                platform_permissions={
+                    "account_type": profile.get("account_type", "BUSINESS"),
+                    "category": profile.get("account_type", "BUSINESS"),
+                    "username": profile.get("username"),
+                    "name": profile.get("name"),
+                    "profile_picture_url": profile.get("avatar_url"),
+                    "picture_url": profile.get("avatar_url"),
+                    "follower_count": profile.get("followers_count"),
+                    "following_count": profile.get("follows_count"),
+                    "post_count": profile.get("media_count"),
+                    "publish_photos": True,
+                    "publish_reels": True,
+                    "read_analytics": True,
+                },
+                team_id=team_id
+            )
+
+            account = social_account_service.connect_account(db, user, account_in)
+
+            # Initial synchronization for newly connected Instagram account
+            try:
+                social_account_service.synchronize_account(db, user, account.id)
+                db.refresh(account)
+            except Exception as e:
+                logger.warning(f"Initial sync for Instagram account {account.id} failed: {e}")
+                account.platform_permissions = {
+                    **(account.platform_permissions or {}),
+                    "sync_status": "pending",
+                    "sync_error": str(e)
+                }
+                db.commit()
+                db.refresh(account)
+
+            acc_name = urllib.parse.quote(account.account_name)
+            return RedirectResponse(
+                url=f"{frontend_base}/dashboard/accounts?oauth=success&status=success&platform=instagram&provider=instagram&account_name={acc_name}&account_id={account.id}",
+                status_code=307
+            )
+
+        # 2. Facebook Page Flow (or fallback Facebook linked Instagram flow)
         if provider_clean in ("facebook", "instagram") or original_provider in ("facebook", "instagram"):
             pages = []
             fb_adapter = get_platform_adapter(SocialPlatform.FACEBOOK)
@@ -562,7 +625,6 @@ async def oauth_callback(
                 }
                 await _save_oauth_session(session_token, session_payload)
 
-                # Pass the original provider so frontend can pre-select Instagram toggle
                 return RedirectResponse(
                     url=f"{frontend_base}/dashboard/accounts?status=select_pages&session_token={session_token}&platform={original_provider}&provider={original_provider}",
                     status_code=307
@@ -571,9 +633,8 @@ async def oauth_callback(
                 if original_provider == "instagram":
                     msg = urllib.parse.quote(
                         "No Facebook Pages found linked to your account. "
-                        "To connect Instagram, you must manage at least one Facebook Page "
-                        "that has an Instagram Professional/Business account linked to it. "
-                        "Please create a Facebook Page and connect your Instagram Professional account to it first."
+                        "To connect Instagram via Facebook, you must manage at least one Facebook Page "
+                        "that has an Instagram Professional/Business account linked to it."
                     )
                 else:
                     msg = urllib.parse.quote(
