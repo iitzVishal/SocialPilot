@@ -108,6 +108,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('socialpilot_access_token');
     localStorage.removeItem('socialpilot_refresh_token');
     localStorage.removeItem('socialpilot_user');
+    localStorage.removeItem('socialpilot_active_team_id');
     setUser(null);
     setToken(null);
     window.location.href = '/login';

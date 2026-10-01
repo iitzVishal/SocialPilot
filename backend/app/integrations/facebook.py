@@ -18,8 +18,11 @@ class FacebookAdapter(BasePlatformAdapter):
     def get_authorization_url(self, state: str, redirect_uri: Optional[str] = None) -> str:
         client_id = settings.META_CLIENT_ID or "META_CLIENT_ID_PLACEHOLDER"
         uri = redirect_uri or settings.META_REDIRECT_URI
+        base_url = f"https://www.facebook.com/{self.api_version}/dialog/oauth?client_id={client_id}&redirect_uri={uri}&state={state}&response_type=code&auth_type=rerequest"
+        if settings.META_CONFIG_ID and settings.META_CONFIG_ID.strip():
+            return f"{base_url}&config_id={settings.META_CONFIG_ID.strip()}&override_default_response_type=true"
         scope = settings.META_OAUTH_SCOPES
-        return f"https://www.facebook.com/{self.api_version}/dialog/oauth?client_id={client_id}&redirect_uri={uri}&state={state}&scope={scope}&response_type=code&auth_type=rerequest"
+        return f"{base_url}&scope={scope}"
 
     def exchange_code_for_token(self, code: str, redirect_uri: Optional[str] = None) -> Dict[str, Any]:
         client_id = settings.META_CLIENT_ID

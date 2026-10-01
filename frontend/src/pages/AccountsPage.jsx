@@ -600,17 +600,31 @@ export const AccountsPage = () => {
           })}
         </div>
 
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-2.5">
           <div className="rounded-xl p-3 text-[11px] border flex items-start gap-2" style={{ background: 'var(--active-nav-bg)', borderColor: 'var(--sp-border)', color: 'var(--sp-text-secondary)' }}>
             <ShieldCheck className="h-4 w-4 mt-0.5 flex-shrink-0 text-emerald-500" aria-hidden="true" />
             <div>
               <strong>Secure Multi-Tenant Isolation:</strong> Every connection is cryptographically bound to your active workspace. Access tokens are encrypted with AES-256 at rest and never exposed.
             </div>
           </div>
-          <div className="rounded-xl p-3 text-[11px] border flex items-start gap-2 bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400">
-            <Info className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
-            <div>
-              <strong>Browser Session Notice:</strong> You're connecting a Facebook or Instagram account through Meta. Meta may use the Facebook account currently signed in to this browser. To connect a different Facebook profile, switch accounts in Meta's login dialog or log out of facebook.com in this browser first.
+          
+          <div className="rounded-xl p-3 text-[11px] border space-y-2 bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
+              <FacebookIcon className="h-3.5 w-3.5 text-[#1877F2]" />
+              <span>Facebook &amp; Instagram Account Selection:</span>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400">
+              Meta uses your active browser session. When connecting, you can choose:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">✓ Continue with current Facebook account</span>
+                <span className="text-[10px] text-slate-500">Connects the Facebook Page or Instagram Business profile linked to your active Facebook browser session.</span>
+              </div>
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">⟳ Use another Facebook account</span>
+                <span className="text-[10px] text-slate-500">In Meta&apos;s dialog, select &quot;Log into another account&quot; or log out of facebook.com before connecting.</span>
+              </div>
             </div>
           </div>
         </div>

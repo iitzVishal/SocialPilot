@@ -95,6 +95,7 @@ class Settings(BaseSettings):
     META_API_VERSION: str = "v19.0"
     META_OAUTH_SCOPES: str = "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish"
     INSTAGRAM_OAUTH_SCOPES: str = "instagram_basic,instagram_content_publish"
+    META_CONFIG_ID: Optional[str] = None
 
     LINKEDIN_CLIENT_ID: Optional[str] = None
     LINKEDIN_CLIENT_SECRET: Optional[str] = None
