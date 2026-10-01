@@ -228,8 +228,10 @@ def synchronize_account(db: Session, user: User, account_id: int) -> Dict[str, A
     now = datetime.now(timezone.utc)
     account.last_synced_at = now
 
-    # Check if remote reported expired token or invalid session
-    if sync_result.get("is_token_expired") or "expired" in sync_result.get("message", "").lower():
+    # Check if remote reported expired token, revoked access, or invalid session
+    if sync_result.get("is_revoked") or "revoked" in sync_result.get("message", "").lower():
+        account.connection_status = SocialAccountStatus.REVOKED
+    elif sync_result.get("is_token_expired") or "expired" in sync_result.get("message", "").lower():
         account.connection_status = SocialAccountStatus.EXPIRED
     elif sync_result.get("status") == "synchronized":
         account.connection_status = SocialAccountStatus.CONNECTED

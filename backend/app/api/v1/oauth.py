@@ -474,14 +474,14 @@ async def oauth_callback(
             friendly_msg = f"OAuth error: {raw_err}"
         msg = urllib.parse.quote(friendly_msg)
         return RedirectResponse(
-            url=f"{frontend_base}/dashboard/accounts?status=error&provider={provider_clean}&message={msg}",
+            url=f"{frontend_base}/dashboard/accounts?oauth=error&status=error&platform={provider_clean}&provider={provider_clean}&message={msg}",
             status_code=307
         )
 
     if not code or not state:
         msg = urllib.parse.quote("Missing required authorization code or state parameter.")
         return RedirectResponse(
-            url=f"{frontend_base}/dashboard/accounts?status=error&provider={provider_clean}&message={msg}",
+            url=f"{frontend_base}/dashboard/accounts?oauth=error&status=error&platform={provider_clean}&provider={provider_clean}&message={msg}",
             status_code=307
         )
 
@@ -490,7 +490,7 @@ async def oauth_callback(
     if not state_payload:
         msg = urllib.parse.quote("Invalid or expired OAuth state session. Please try connecting again.")
         return RedirectResponse(
-            url=f"{frontend_base}/dashboard/accounts?status=error&provider={provider_clean}&message={msg}",
+            url=f"{frontend_base}/dashboard/accounts?oauth=error&status=error&platform={provider_clean}&provider={provider_clean}&message={msg}",
             status_code=307
         )
 
@@ -500,7 +500,7 @@ async def oauth_callback(
     if not user:
         msg = urllib.parse.quote("Authenticated user session not found.")
         return RedirectResponse(
-            url=f"{frontend_base}/dashboard/accounts?status=error&provider={provider_clean}&message={msg}",
+            url=f"{frontend_base}/dashboard/accounts?oauth=error&status=error&platform={provider_clean}&provider={provider_clean}&message={msg}",
             status_code=307
         )
 
@@ -550,7 +550,7 @@ async def oauth_callback(
 
                 # Pass the original provider so frontend can pre-select Instagram toggle
                 return RedirectResponse(
-                    url=f"{frontend_base}/dashboard/accounts?status=select_pages&session_token={session_token}&platform={original_provider}",
+                    url=f"{frontend_base}/dashboard/accounts?status=select_pages&session_token={session_token}&platform={original_provider}&provider={original_provider}",
                     status_code=307
                 )
             else:
@@ -566,7 +566,7 @@ async def oauth_callback(
                         "No Facebook Pages found. You must be an admin of at least one Facebook Page to connect."
                     )
                 return RedirectResponse(
-                    url=f"{frontend_base}/dashboard/accounts?status=error&provider={original_provider}&message={msg}",
+                    url=f"{frontend_base}/dashboard/accounts?oauth=error&status=error&platform={original_provider}&provider={original_provider}&message={msg}",
                     status_code=307
                 )
 
@@ -592,7 +592,7 @@ async def oauth_callback(
         account = social_account_service.connect_account(db, user, account_in)
         acc_name = urllib.parse.quote(account.account_name)
         return RedirectResponse(
-            url=f"{frontend_base}/dashboard/accounts?status=success&platform={provider_clean}&account_name={acc_name}",
+            url=f"{frontend_base}/dashboard/accounts?oauth=success&status=success&platform={provider_clean}&provider={provider_clean}&account_name={acc_name}&account_id={account.id}",
             status_code=307
         )
 
@@ -600,6 +600,6 @@ async def oauth_callback(
         logger.error(f"OAuth code exchange failed for {provider_clean}: {e}", exc_info=True)
         msg = urllib.parse.quote(f"Failed to complete OAuth token exchange: {str(e)}")
         return RedirectResponse(
-            url=f"{frontend_base}/dashboard/accounts?status=error&provider={provider_clean}&message={msg}",
+            url=f"{frontend_base}/dashboard/accounts?oauth=error&status=error&platform={provider_clean}&provider={provider_clean}&message={msg}",
             status_code=307
         )

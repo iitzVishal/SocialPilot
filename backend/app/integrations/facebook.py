@@ -184,13 +184,15 @@ class FacebookAdapter(BasePlatformAdapter):
                 err_subcode = err.get("error_subcode")
                 err_msg = err.get("message", "Facebook synchronization failed")
                 is_expired = err_code == 190 or err_subcode in (463, 467)
-                logger.warning(f"Facebook sync failed for {account_identifier}: code={err_code}, msg={err_msg}")
+                is_revoked = err_subcode == 458 or "revoked" in err_msg.lower() or "session has been invalidated" in err_msg.lower()
+                logger.warning(f"Facebook sync failed for {account_identifier}: code={err_code}, subcode={err_subcode}, msg={err_msg}")
                 return {
                     "platform": self.platform.value,
                     "account_identifier": account_identifier,
                     "status": "error",
                     "is_token_expired": is_expired,
-                    "message": f"Token expired or unauthorized: {err_msg}" if is_expired else err_msg
+                    "is_revoked": is_revoked,
+                    "message": f"Access revoked: {err_msg}" if is_revoked else (f"Token expired or unauthorized: {err_msg}" if is_expired else err_msg)
                 }
 
             followers = data.get("followers_count") or data.get("fan_count", 0)

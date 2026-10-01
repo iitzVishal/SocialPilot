@@ -240,6 +240,11 @@ export const DashboardOverviewPage = () => {
 
   useEffect(() => {
     fetchAccounts();
+    const handleAccountsUpdated = () => fetchAccounts();
+    window.addEventListener('socialpilot:accounts-updated', handleAccountsUpdated);
+    return () => {
+      window.removeEventListener('socialpilot:accounts-updated', handleAccountsUpdated);
+    };
   }, [activeTeamId]);
 
   /* Subtle mouse-follow tilt on hero (disabled on touch/reduced-motion) */

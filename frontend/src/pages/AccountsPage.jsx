@@ -172,6 +172,7 @@ export const AccountsPage = () => {
   // Process OAuth Callback Query Parameters
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
+    const oauthParam = searchParams.get('oauth');
     const statusParam = searchParams.get('status');
     const sessionTokenParam = searchParams.get('session_token');
     const providerParam = searchParams.get('platform') || searchParams.get('provider');
@@ -183,16 +184,21 @@ export const AccountsPage = () => {
       // Pass the platform hint (e.g. 'instagram') so we can pre-select the toggle
       loadAvailablePages(sessionTokenParam, providerParam);
       window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (statusParam === 'success') {
+    } else if (oauthParam === 'success' || statusParam === 'success') {
       const name = accountNameParam ? decodeURIComponent(accountNameParam) : null;
-      const platform = providerParam || 'social';
-      // Show success animation for direct-success connections (non-Meta platforms)
+      const platform = providerParam || 'instagram';
+      // Show success animation for successful connections
       setSyncComplete(false);
-      setConnectionSuccess({ platform, accountName: name || platform });
-      setTimeout(() => setSyncComplete(true), 2200);
-      setTimeout(() => setConnectionSuccess(null), 6000);
+      setConnectionSuccess({ platform, accountName: name || (platform === 'instagram' ? 'Instagram Account' : platform) });
+      setTimeout(() => setSyncComplete(true), 1800);
+      setTimeout(() => {
+        setConnectionSuccess(null);
+        window.dispatchEvent(new CustomEvent('socialpilot:accounts-updated'));
+      }, 4200);
       window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (statusParam === 'error') {
+      fetchAccounts(selectedPlatform);
+      window.dispatchEvent(new CustomEvent('socialpilot:accounts-updated'));
+    } else if (oauthParam === 'error' || statusParam === 'error') {
       const msg = messageParam ? decodeURIComponent(messageParam) : `OAuth authorization failed for ${providerParam || 'provider'}.`;
       showToast(msg, 'error');
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -309,26 +315,26 @@ export const AccountsPage = () => {
         <div
           role="status"
           aria-live="polite"
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)' }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
         >
           <div
-            className="relative flex flex-col items-center gap-5 rounded-3xl border p-10 shadow-2xl animate-sp-fade-in-up"
+            className="relative flex flex-col items-center gap-5 rounded-3xl border p-8 sm:p-10 shadow-2xl animate-sp-fade-in-up text-center"
             style={{
               background: 'var(--sp-card)',
               borderColor: 'var(--sp-border)',
-              maxWidth: 360,
-              width: '90vw',
+              maxWidth: 380,
+              width: '100%',
             }}
           >
-            {/* Animated ring */}
+            {/* Animated Platform + Success Icon */}
             <div className="relative flex items-center justify-center">
               <div
-                className="absolute h-28 w-28 rounded-full animate-ping opacity-20"
+                className="absolute h-24 w-24 rounded-full animate-ping opacity-25"
                 style={{ background: connectionSuccess.platform === 'instagram' ? '#E4405F' : '#1877F2' }}
               />
               <div
-                className="flex h-24 w-24 items-center justify-center rounded-full border-4"
+                className="flex h-20 w-20 items-center justify-center rounded-2xl border-2 shadow-lg relative"
                 style={{
                   borderColor: connectionSuccess.platform === 'instagram' ? '#E4405F' : '#1877F2',
                   background: connectionSuccess.platform === 'instagram'
@@ -336,25 +342,34 @@ export const AccountsPage = () => {
                     : 'rgba(24,119,242,0.12)',
                 }}
               >
-                <CheckCircle2
-                  className="h-12 w-12"
-                  style={{ color: connectionSuccess.platform === 'instagram' ? '#E4405F' : '#1877F2' }}
-                />
+                {connectionSuccess.platform === 'instagram' ? (
+                  <InstagramIcon className="h-10 w-10 text-[#E4405F]" />
+                ) : (
+                  <FacebookIcon className="h-10 w-10 text-[#1877F2]" />
+                )}
+                {/* Floating check badge */}
+                <div className="absolute -bottom-1 -right-1 bg-emerald-500 rounded-full p-1 border-2 border-white dark:border-slate-900 shadow-md">
+                  <CheckCircle2 className="h-4 w-4 text-white" />
+                </div>
               </div>
             </div>
 
-            <div className="text-center space-y-1.5">
-              <h2 className="text-xl font-bold font-heading" style={{ color: 'var(--sp-text)' }}>
-                Account Connected!
+            <div className="space-y-1">
+              <h2 className="text-lg sm:text-xl font-bold font-heading" style={{ color: 'var(--sp-text)' }}>
+                {connectionSuccess.platform === 'instagram'
+                  ? 'Instagram Connected Successfully'
+                  : `${connectionSuccess.platform.charAt(0).toUpperCase() + connectionSuccess.platform.slice(1)} Connected Successfully`}
               </h2>
-              <p className="text-sm font-semibold capitalize" style={{ color: 'var(--sp-text-secondary)' }}>
-                {connectionSuccess.platform} — {connectionSuccess.accountName}
+              <p className="text-xs sm:text-sm font-medium" style={{ color: 'var(--sp-text-secondary)' }}>
+                {connectionSuccess.platform === 'instagram' && !connectionSuccess.accountName.startsWith('@')
+                  ? `@${connectionSuccess.accountName}`
+                  : connectionSuccess.accountName}
               </p>
             </div>
 
-            {/* Sync status */}
+            {/* Sync Progress / Ready State */}
             <div
-              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border"
+              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border transition-all"
               style={{
                 background: syncComplete ? 'rgba(16,185,129,0.12)' : 'var(--sp-surface-2)',
                 borderColor: syncComplete ? 'rgba(16,185,129,0.3)' : 'var(--sp-border)',
@@ -363,27 +378,28 @@ export const AccountsPage = () => {
             >
               {syncComplete ? (
                 <>
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                  All data synced successfully
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 animate-sp-scale-in" />
+                  <span>Your {connectionSuccess.platform === 'instagram' ? 'Instagram' : connectionSuccess.platform} account is ready.</span>
                 </>
               ) : (
                 <>
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  Syncing account data...
+                  <RefreshCw className="h-4 w-4 animate-spin text-cyan-600 dark:text-violet-400" />
+                  <span>Syncing your account data...</span>
                 </>
               )}
             </div>
 
-            {syncComplete && (
-              <button
-                type="button"
-                onClick={() => setConnectionSuccess(null)}
-                className="mt-1 text-xs font-semibold underline underline-offset-2 cursor-pointer"
-                style={{ color: 'var(--sp-text-muted)' }}
-              >
-                Dismiss
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setConnectionSuccess(null);
+                window.dispatchEvent(new CustomEvent('socialpilot:accounts-updated'));
+              }}
+              className="mt-1 text-xs font-semibold px-4 py-1.5 rounded-lg border cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              style={{ borderColor: 'var(--sp-border)', color: 'var(--sp-text-secondary)' }}
+            >
+              {syncComplete ? 'Done' : 'Dismiss'}
+            </button>
           </div>
         </div>
       )}
@@ -528,12 +544,14 @@ export const AccountsPage = () => {
                     </Badge>
                   </div>
 
-                  {/* Expired Token Warning & Reconnect CTA */}
-                  {(account.connection_status === 'expired' || isExpired) && (
+                  {/* Expired / Revoked Token Warning & Reconnect CTA */}
+                  {(account.connection_status === 'expired' || account.connection_status === 'revoked' || isExpired) && (
                     <div className="mt-3 flex items-center justify-between rounded-xl bg-amber-500/10 p-2.5 text-xs text-amber-600 dark:text-amber-400 border border-amber-500/20">
                       <div className="flex items-center gap-1.5">
                         <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                        <span className="font-medium text-[11px]">Token expired. Reconnect required.</span>
+                        <span className="font-medium text-[11px]">
+                          {account.connection_status === 'revoked' ? 'Access revoked. Reconnect required.' : 'Token expired. Reconnect required.'}
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -557,14 +575,18 @@ export const AccountsPage = () => {
                         {account.platform}
                       </span>
                     </div>
-                    {account.platform_permissions?.follower_count !== undefined && account.platform_permissions?.follower_count !== null && (
-                      <div className="flex justify-between text-slate-500">
-                        <span>Audience / Followers:</span>
+                    <div className="flex justify-between text-slate-500">
+                      <span>Audience / Followers:</span>
+                      {account.platform_permissions?.follower_count !== undefined && account.platform_permissions?.follower_count !== null ? (
                         <span className="font-bold text-slate-700 dark:text-slate-300">
                           {Number(account.platform_permissions.follower_count).toLocaleString()}
                         </span>
-                      </div>
-                    )}
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">
+                          Not available from {account.platform === 'instagram' ? 'Instagram' : 'Meta'} API
+                        </span>
+                      )}
+                    </div>
                     {account.platform_permissions?.following_count !== undefined && account.platform_permissions?.following_count !== null && (
                       <div className="flex justify-between text-slate-500">
                         <span>Following:</span>
@@ -573,14 +595,18 @@ export const AccountsPage = () => {
                         </span>
                       </div>
                     )}
-                    {account.platform_permissions?.post_count !== undefined && account.platform_permissions?.post_count !== null && (
-                      <div className="flex justify-between text-slate-500">
-                        <span>Total Posts:</span>
+                    <div className="flex justify-between text-slate-500">
+                      <span>Total Posts:</span>
+                      {account.platform_permissions?.post_count !== undefined && account.platform_permissions?.post_count !== null ? (
                         <span className="font-bold text-slate-700 dark:text-slate-300">
                           {Number(account.platform_permissions.post_count).toLocaleString()}
                         </span>
-                      </div>
-                    )}
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">
+                          Not available from {account.platform === 'instagram' ? 'Instagram' : 'Meta'} API
+                        </span>
+                      )}
+                    </div>
                     {account.platform_permissions?.biography && (
                       <div className="text-[11px] text-slate-500 italic pt-1 border-t border-slate-100 dark:border-slate-800 line-clamp-2">
                         &quot;{account.platform_permissions.biography}&quot;

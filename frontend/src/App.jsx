@@ -24,8 +24,12 @@ import NotificationsPage from './pages/NotificationsPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsPage } from './pages/TermsPage';
 import { DataDeletionPage } from './pages/DataDeletionPage';
+import { useLocation } from 'react-router-dom';
 
-
+function SocialAccountsRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/dashboard/accounts${location.search}`} replace />;
+}
 
 export function App() {
   return (
@@ -38,6 +42,10 @@ export function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/invite/:token" element={<AcceptInvitationPage />} />
+
+          {/* Social Accounts canonical aliases */}
+          <Route path="/social-accounts" element={<SocialAccountsRedirect />} />
+          <Route path="/accounts" element={<SocialAccountsRedirect />} />
 
           {/* Public Legal & Meta Verification Routes */}
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
