@@ -593,8 +593,15 @@ async def oauth_callback(
                 db.refresh(account)
 
             acc_name = urllib.parse.quote(account.account_name)
+            avatar_url = (
+                (account.platform_permissions or {}).get("profile_picture_url")
+                or (account.platform_permissions or {}).get("picture_url")
+                or (account.platform_permissions or {}).get("avatar_url")
+                or ""
+            )
+            avatar_param = f"&avatar_url={urllib.parse.quote(avatar_url)}" if avatar_url else ""
             return RedirectResponse(
-                url=f"{frontend_base}/dashboard/accounts?oauth=success&status=success&platform=instagram&provider=instagram&account_name={acc_name}&account_id={account.id}",
+                url=f"{frontend_base}/dashboard/accounts?oauth=success&status=success&platform=instagram&provider=instagram&account_name={acc_name}&account_id={account.id}{avatar_param}",
                 status_code=307
             )
 

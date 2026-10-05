@@ -56,8 +56,9 @@ export const AccountsPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Connection success animation state
-  const [connectionSuccess, setConnectionSuccess] = useState(null); // { platform, accountName }
+  // Connection success & error animation state
+  const [connectionSuccess, setConnectionSuccess] = useState(null); // { platform, accountName, avatarUrl }
+  const [connectionError, setConnectionError] = useState(null); // { platform, message }
   const [syncComplete, setSyncComplete] = useState(false);
 
   // Modals state
@@ -154,9 +155,12 @@ export const AccountsPage = () => {
       const acctName = connectInstagram && res.data?.instagram_account
         ? (res.data.instagram_account.account_name || res.data.instagram_account.account_identifier)
         : (res.data?.facebook_account?.account_name || 'your account');
+      const avatarUrl = connectInstagram && res.data?.instagram_account
+        ? (res.data.instagram_account.platform_permissions?.picture_url || res.data.instagram_account.platform_permissions?.profile_picture_url)
+        : (res.data?.facebook_account?.platform_permissions?.picture_url || res.data?.facebook_account?.platform_permissions?.profile_picture_url);
       // Show success animation
       setSyncComplete(false);
-      setConnectionSuccess({ platform, accountName: acctName });
+      setConnectionSuccess({ platform, accountName: acctName, avatarUrl });
       setTimeout(() => setSyncComplete(true), 2200);
       setTimeout(() => setConnectionSuccess(null), 6000);
     } catch (err) {
@@ -178,6 +182,7 @@ export const AccountsPage = () => {
     const providerParam = searchParams.get('platform') || searchParams.get('provider');
     const messageParam = searchParams.get('message');
     const accountNameParam = searchParams.get('account_name');
+    const avatarUrlParam = searchParams.get('avatar_url');
 
     if (statusParam === 'select_pages' && sessionTokenParam) {
       setActiveSessionToken(sessionTokenParam);
@@ -187,19 +192,28 @@ export const AccountsPage = () => {
     } else if (oauthParam === 'success' || statusParam === 'success') {
       const name = accountNameParam ? decodeURIComponent(accountNameParam) : null;
       const platform = providerParam || 'instagram';
+      const avatar = avatarUrlParam ? decodeURIComponent(avatarUrlParam) : null;
       // Show success animation for successful connections
       setSyncComplete(false);
-      setConnectionSuccess({ platform, accountName: name || (platform === 'instagram' ? 'Instagram Account' : platform) });
+      setConnectionSuccess({
+        platform,
+        accountName: name || (platform === 'instagram' ? 'Instagram Account' : platform),
+        avatarUrl: avatar,
+      });
       setTimeout(() => setSyncComplete(true), 1800);
       setTimeout(() => {
         setConnectionSuccess(null);
         window.dispatchEvent(new CustomEvent('socialpilot:accounts-updated'));
-      }, 4200);
+      }, 4500);
       window.history.replaceState({}, document.title, window.location.pathname);
       fetchAccounts(selectedPlatform);
       window.dispatchEvent(new CustomEvent('socialpilot:accounts-updated'));
     } else if (oauthParam === 'error' || statusParam === 'error') {
       const msg = messageParam ? decodeURIComponent(messageParam) : `OAuth authorization failed for ${providerParam || 'provider'}.`;
+      setConnectionError({
+        platform: providerParam || 'instagram',
+        message: msg,
+      });
       showToast(msg, 'error');
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -334,7 +348,7 @@ export const AccountsPage = () => {
                 style={{ background: connectionSuccess.platform === 'instagram' ? '#E4405F' : '#1877F2' }}
               />
               <div
-                className="flex h-20 w-20 items-center justify-center rounded-2xl border-2 shadow-lg relative"
+                className="flex h-20 w-20 items-center justify-center rounded-2xl border-2 shadow-lg relative overflow-hidden"
                 style={{
                   borderColor: connectionSuccess.platform === 'instagram' ? '#E4405F' : '#1877F2',
                   background: connectionSuccess.platform === 'instagram'
@@ -342,7 +356,13 @@ export const AccountsPage = () => {
                     : 'rgba(24,119,242,0.12)',
                 }}
               >
-                {connectionSuccess.platform === 'instagram' ? (
+                {connectionSuccess.avatarUrl ? (
+                  <img
+                    src={connectionSuccess.avatarUrl}
+                    alt={connectionSuccess.accountName}
+                    className="h-full w-full object-cover"
+                  />
+                ) : connectionSuccess.platform === 'instagram' ? (
                   <InstagramIcon className="h-10 w-10 text-[#E4405F]" />
                 ) : (
                   <FacebookIcon className="h-10 w-10 text-[#1877F2]" />
@@ -406,6 +426,76 @@ export const AccountsPage = () => {
             >
               {syncComplete ? 'Done' : 'Dismiss'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Connection Failed Overlay ── */}
+      {connectionError && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}
+        >
+          <div
+            className="relative flex flex-col items-center gap-5 rounded-3xl border p-8 sm:p-10 shadow-2xl animate-sp-fade-in-up text-center"
+            style={{
+              background: 'var(--sp-card)',
+              borderColor: 'var(--sp-border)',
+              maxWidth: 420,
+              width: '100%',
+            }}
+          >
+            {/* Platform + Error Icon */}
+            <div className="relative flex items-center justify-center">
+              <div
+                className="flex h-20 w-20 items-center justify-center rounded-2xl border-2 shadow-lg relative border-rose-500/40 bg-rose-500/10"
+              >
+                {connectionError.platform === 'instagram' ? (
+                  <InstagramIcon className="h-10 w-10 text-[#E4405F]" />
+                ) : (
+                  <FacebookIcon className="h-10 w-10 text-[#1877F2]" />
+                )}
+                <div className="absolute -bottom-1 -right-1 bg-rose-500 rounded-full p-1 border-2 border-white dark:border-slate-900 shadow-md">
+                  <AlertCircle className="h-4 w-4 text-white" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 w-full">
+              <h2 className="text-lg sm:text-xl font-bold font-heading flex items-center justify-center gap-1.5 text-rose-500">
+                <span>Connection Failed</span>
+              </h2>
+              <p className="text-xs sm:text-sm font-semibold capitalize" style={{ color: 'var(--sp-text-secondary)' }}>
+                {connectionError.platform} Authorization Not Completed
+              </p>
+              <div className="mt-2 rounded-xl p-3 bg-rose-500/10 border border-rose-500/20 text-xs text-rose-700 dark:text-rose-300 text-left">
+                <p className="font-semibold mb-1">Details:</p>
+                <p className="leading-relaxed">{connectionError.message}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 w-full pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setConnectionError(null)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="primary"
+                className="flex-1"
+                onClick={() => {
+                  const p = connectionError.platform;
+                  setConnectionError(null);
+                  handleInitiateOAuth(p);
+                }}
+              >
+                Retry Connection
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -582,6 +672,20 @@ export const AccountsPage = () => {
                       </span>
                     </div>
                     <div className="flex justify-between text-slate-500">
+                      <span>Account Type:</span>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300 capitalize">
+                        {account.platform_permissions?.account_type || account.platform_permissions?.category || 'Business'}
+                      </span>
+                    </div>
+                    {account.platform === 'instagram' && (
+                      <div className="flex justify-between text-slate-500">
+                        <span>Username:</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          @{account.platform_permissions?.username || account.account_name}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-slate-500">
                       <span>Audience / Followers:</span>
                       {account.platform_permissions?.follower_count !== undefined && account.platform_permissions?.follower_count !== null ? (
                         <span className="font-bold text-slate-700 dark:text-slate-300">
@@ -589,7 +693,7 @@ export const AccountsPage = () => {
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-400 italic">
-                          {account.platform === 'instagram' ? 'Not available from Instagram API' : 'Not available from Meta API'}
+                          Not available from Meta
                         </span>
                       )}
                     </div>
@@ -602,7 +706,7 @@ export const AccountsPage = () => {
                           </span>
                         ) : (
                           <span className="text-[10px] text-slate-400 italic">
-                            Not available from Instagram API
+                            Not available from Meta
                           </span>
                         )}
                       </div>
@@ -624,7 +728,7 @@ export const AccountsPage = () => {
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-400 italic">
-                          {account.platform === 'instagram' ? 'Not available from Instagram API' : 'Not available from Meta API'}
+                          Not available from Meta
                         </span>
                       )}
                     </div>
@@ -919,10 +1023,32 @@ export const AccountsPage = () => {
         title={preferredPlatform === 'instagram' ? 'Connect Instagram via Facebook Page' : 'Select Facebook Page to Connect'}
         description={
           preferredPlatform === 'instagram'
-            ? 'Instagram Professional/Business accounts are linked to Facebook Pages. Select your Page below — your linked Instagram account will be pre-selected for connection.'
+            ? 'Instagram Professional & Creator accounts are linked to Facebook Pages. Select your Page below to discover and connect your Instagram profile.'
             : 'Choose which Facebook Page you want to manage. If an Instagram Professional account is connected to the Page, you can also link it now.'
         }
       >
+        {preferredPlatform === 'instagram' && (
+          <div className="mb-4 rounded-xl p-3 bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-purple-500/10 border border-[#E4405F]/20 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+              <InstagramIcon className="h-4 w-4 text-[#E4405F]" />
+              <span>Instagram Professional Account Discovery</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 text-[10px] text-center pt-1 font-medium">
+              <div className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/20">
+                1. Meta Auth ✓
+              </div>
+              <div className="p-1.5 rounded-lg bg-rose-500/15 text-rose-700 dark:text-rose-300 font-semibold border border-rose-500/30">
+                2. Select Linked Page
+              </div>
+              <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                3. Save & Sync
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+              Meta links Instagram Business & Creator accounts through Facebook Pages. Choose the Facebook Page below that manages your Instagram account.
+            </p>
+          </div>
+        )}
         {pageSelectError && (
           <div className="mb-4 flex items-start gap-2 rounded-xl bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-400 border border-rose-500/20">
             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
@@ -1065,7 +1191,9 @@ export const AccountsPage = () => {
             isLoading={pageSelectLoading}
             disabled={!selectedPageId || availablePages.length === 0}
           >
-            Connect Selected Page
+            {preferredPlatform === 'instagram'
+              ? (connectInstagram ? 'Connect Instagram Account' : 'Connect Facebook Page')
+              : (connectInstagram ? 'Connect Page & Instagram' : 'Connect Selected Page')}
           </Button>
         </div>
       </Modal>
