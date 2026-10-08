@@ -30,8 +30,16 @@ celery_app.conf.update(
         "app.tasks.publishing.cancel_scheduled_task": {"queue": "default"},
         "app.tasks.email.send_invitation_email_task": {"queue": "default"},
         "app.tasks.analytics.sync_team_analytics_task": {"queue": "default"},
+        "app.tasks.analytics.sync_instagram_account_task": {"queue": "default"},
+        "app.tasks.analytics.periodic_sync_instagram_accounts_task": {"queue": "default"},
     },
     task_default_queue="default",
+    beat_schedule={
+        "periodic-sync-instagram-every-hour": {
+            "task": "app.tasks.analytics.periodic_sync_instagram_accounts_task",
+            "schedule": 3600.0,  # Run every hour
+        },
+    },
 )
 
 logger.info(f"Celery initialized with Redis broker: {settings.REDIS_URL.split('@')[-1] if '@' in settings.REDIS_URL else settings.REDIS_URL}")

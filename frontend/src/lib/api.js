@@ -129,6 +129,12 @@ export const accountsAPI = {
   updatePermissions: (id, permissions) => api.patch(`/accounts/${id}/permissions`, { platform_permissions: permissions }),
   sync: (id) => api.post(`/accounts/${id}/sync`),
   disconnect: (id) => api.delete(`/accounts/${id}`),
+  getInstagramSnapshots: (id, days = 30) => api.get(`/accounts/${id}/instagram/snapshots`, { params: { days } }),
+  getInstagramMedia: (id, params = {}) => api.get(`/accounts/${id}/instagram/media`, { params }),
+  getInstagramPerformanceScore: (id) => api.get(`/accounts/${id}/instagram/performance-score`),
+  getInstagramComments: (accountId, mediaId) => api.get(`/accounts/${accountId}/instagram/media/${mediaId}/comments`),
+  postInstagramComment: (accountId, mediaId, message) => api.post(`/accounts/${accountId}/instagram/media/${mediaId}/comments`, { message }),
+  getInstagramMessagesStatus: (id) => api.get(`/accounts/${id}/instagram/messages`),
 };
 
 export const oauthAPI = {

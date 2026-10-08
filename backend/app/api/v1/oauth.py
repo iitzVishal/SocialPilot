@@ -483,7 +483,7 @@ async def oauth_callback(
     if error or error_description:
         raw_err = error_description or error or "OAuth authorization denied by user."
         if "permission" in raw_err.lower() or "scope" in raw_err.lower():
-            friendly_msg = "Meta rejected one or more requested permissions. Please verify that required permissions are added to your Meta App and that your Facebook account is added under App Roles in the Meta Developer Console."
+            friendly_msg = "Meta rejected one or more requested Permissions. Please verify that required permissions are added to your Meta App and that your Facebook account is added under App Roles in the Meta Developer Console."
         elif "denied" in raw_err.lower() or "cancel" in raw_err.lower():
             friendly_msg = "Connection cancelled"
         else:

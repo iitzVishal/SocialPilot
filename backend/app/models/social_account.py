@@ -19,6 +19,9 @@ class SocialAccount(Base):
     platform_permissions = Column(JSON, nullable=True)
     connection_status = Column(Enum(SocialAccountStatus), default=SocialAccountStatus.CONNECTED, nullable=False)
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    last_failed_sync_at = Column(DateTime(timezone=True), nullable=True)
+    sync_error = Column(Text, nullable=True)
+    sync_status = Column(String(50), default="idle", nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -29,3 +32,5 @@ class SocialAccount(Base):
     # Relationships
     user = relationship("User", back_populates="social_accounts")
     team = relationship("Team", back_populates="social_accounts")
+    metric_snapshots = relationship("InstagramMetricSnapshot", back_populates="social_account", cascade="all, delete-orphan")
+    media_items = relationship("InstagramMedia", back_populates="social_account", cascade="all, delete-orphan")

@@ -33,6 +33,9 @@ class SocialAccountResponse(SocialAccountBase):
     token_expires_at: Optional[datetime] = None
     platform_permissions: Optional[Dict[str, Any]] = None
     last_synced_at: Optional[datetime] = None
+    last_failed_sync_at: Optional[datetime] = None
+    sync_error: Optional[str] = None
+    sync_status: Optional[str] = "idle"
     created_at: datetime
     updated_at: datetime
 
@@ -57,6 +60,9 @@ class SocialAccountResponse(SocialAccountBase):
             token_expires_at=account.token_expires_at,
             platform_permissions=account.platform_permissions or {},
             last_synced_at=account.last_synced_at,
+            last_failed_sync_at=getattr(account, "last_failed_sync_at", None),
+            sync_error=getattr(account, "sync_error", None),
+            sync_status=getattr(account, "sync_status", "idle") or "idle",
             created_at=account.created_at,
             updated_at=account.updated_at
         )
@@ -113,3 +119,81 @@ class FacebookConnectPageResponse(BaseModel):
     facebook_account: SocialAccountResponse
     instagram_account: Optional[SocialAccountResponse] = None
     message: str
+
+
+class InstagramMetricSnapshotResponse(BaseModel):
+    id: int
+    account_id: int
+    date: str
+    follower_count: int
+    following_count: int
+    media_count: int
+    net_follower_growth: int
+    growth_rate: float
+    impressions: int
+    reach: int
+    profile_views: int
+    website_clicks: int
+    recorded_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InstagramMediaResponse(BaseModel):
+    id: int
+    account_id: int
+    external_media_id: str
+    caption: Optional[str] = None
+    media_type: str
+    permalink: Optional[str] = None
+    media_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    like_count: int
+    comments_count: int
+    views_count: int
+    reach_count: int
+    shares_count: int
+    saved_count: int
+    engagement: int
+    performance_score: float
+    raw_insights: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InstagramCommentResponse(BaseModel):
+    id: int
+    media_id: int
+    external_comment_id: str
+    from_username: Optional[str] = None
+    text: str
+    timestamp: Optional[datetime] = None
+    like_count: int
+    parent_comment_id: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InstagramCommentCreate(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000, description="Comment text to post")
+
+
+class InstagramScoreBreakdown(BaseModel):
+    likes: int = 0
+    comments: int = 0
+    views: int = 0
+    reach: int = 0
+    saves: int = 0
+    shares: int = 0
+    engagement_rate: float = 0.0
+
+
+class InstagramPerformanceScoreResponse(BaseModel):
+    account_id: int
+    score: float = Field(..., description="Deterministic SocialPilot Performance Score (0-100)")
+    grade: str = Field(..., description="Tier rating: Excellent, Strong, Good, Fair, Developing")
+    formula_description: str
+    breakdown: InstagramScoreBreakdown
+

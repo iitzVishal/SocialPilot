@@ -55,13 +55,14 @@ export const LoginPage = () => {
         {/* Brand Logo Header */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-4 group text-decoration-none">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg transition-transform group-hover:scale-105"
-              style={{ background: 'linear-gradient(135deg, #15803D, #22C55E)', boxShadow: '0 0 24px rgba(34,197,94,0.3)' }}
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl overflow-hidden shadow-lg transition-transform group-hover:scale-105 border border-slate-700/50 bg-[#090d16]"
+              style={{ boxShadow: '0 0 24px rgba(34, 197, 94, 0.25)' }}
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="white" opacity="0.9"/>
-                <path d="M9 12l2 2 4-4" stroke="#15803D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <img
+                src="/socialpilot-logo.jpg"
+                alt="SocialPilot Logo"
+                className="h-full w-full object-cover rounded-2xl"
+              />
             </div>
           </Link>
           <h1 className="text-2xl font-extrabold tracking-tight font-heading" style={{ color: 'var(--sp-text)' }}>

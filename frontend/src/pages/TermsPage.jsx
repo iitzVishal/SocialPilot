@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 export function TermsPage() {
   return (
@@ -9,8 +9,8 @@ export function TermsPage() {
       <header className="border-b border-slate-800 bg-slate-950/60 backdrop-blur sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-900/30">
-              <FileText className="w-5 h-5 text-white" />
+            <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-700/60 shadow-lg shadow-emerald-900/30 flex items-center justify-center bg-[#090d16] flex-shrink-0">
+              <img src="/socialpilot-logo.jpg" alt="SocialPilot Logo" className="w-full h-full object-cover rounded-lg" />
             </div>
             <span className="font-bold text-lg text-white">SocialPilot</span>
           </Link>

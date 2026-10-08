@@ -443,3 +443,209 @@ class InstagramAdapter(BasePlatformAdapter):
                     break
 
         return posts
+
+    def fetch_account_insights(self, access_token: str, account_identifier: str) -> Dict[str, Any]:
+        """
+        Fetch Instagram Business account insights (impressions, reach, profile views, website clicks).
+        Returns actual Meta API values or 0s when unsupported/permission restricted without faking.
+        """
+        url = f"https://graph.facebook.com/{self.api_version}/{account_identifier}/insights"
+        params = {
+            "metric": "impressions,reach,profile_views,website_clicks",
+            "period": "day",
+            "access_token": access_token
+        }
+        res_data = {"impressions": 0, "reach": 0, "profile_views": 0, "website_clicks": 0, "supported": False}
+        with httpx.Client(timeout=12.0) as client:
+            try:
+                resp = client.get(url, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    metrics_list = data.get("data", [])
+                    for m in metrics_list:
+                        name = m.get("name")
+                        values = m.get("values", [])
+                        val = values[-1].get("value", 0) if values else 0
+                        if name in res_data:
+                            res_data[name] = int(val)
+                    res_data["supported"] = True
+                else:
+                    logger.info(f"Instagram insights endpoint returned {resp.status_code} for {account_identifier}")
+            except Exception as e:
+                logger.warning(f"Error fetching Instagram insights for {account_identifier}: {e}")
+        return res_data
+
+    def fetch_media_insights(self, access_token: str, external_media_id: str) -> Dict[str, Any]:
+        """
+        Fetch media-specific insights (reach, saved, shares, total_interactions) from Meta Graph API.
+        """
+        url = f"https://graph.facebook.com/{self.api_version}/{external_media_id}/insights"
+        params = {
+            "metric": "reach,saved,shares,total_interactions",
+            "access_token": access_token
+        }
+        insights = {"reach": 0, "saved": 0, "shares": 0, "views": 0, "supported": False}
+        with httpx.Client(timeout=10.0) as client:
+            try:
+                resp = client.get(url, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for item in data.get("data", []):
+                        name = item.get("name")
+                        vals = item.get("values", [])
+                        val = vals[0].get("value", 0) if vals else 0
+                        if name == "reach":
+                            insights["reach"] = int(val)
+                        elif name == "saved":
+                            insights["saved"] = int(val)
+                        elif name == "shares":
+                            insights["shares"] = int(val)
+                    insights["supported"] = True
+            except Exception as e:
+                logger.debug(f"Media insights unavailable for {external_media_id}: {e}")
+        return insights
+
+    def create_media_container(
+        self,
+        access_token: str,
+        account_identifier: str,
+        media_type: str,
+        media_url: str,
+        caption: str = "",
+        is_carousel_item: bool = False,
+        children: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Step 1 of Instagram Graph API publishing: Create an item container.
+        """
+        url = f"https://graph.facebook.com/{self.api_version}/{account_identifier}/media"
+        data: Dict[str, Any] = {
+            "access_token": access_token
+        }
+
+        if children:
+            data["media_type"] = "CAROUSEL"
+            data["children"] = ",".join(children)
+            if caption:
+                data["caption"] = caption
+        elif media_type.upper() in ("VIDEO", "REELS", "REEL"):
+            data["media_type"] = "REELS"
+            data["video_url"] = media_url
+            if caption:
+                data["caption"] = caption
+            if is_carousel_item:
+                data["is_carousel_item"] = "true"
+        else:
+            data["image_url"] = media_url
+            if caption:
+                data["caption"] = caption
+            if is_carousel_item:
+                data["is_carousel_item"] = "true"
+
+        with httpx.Client(timeout=20.0) as client:
+            try:
+                resp = client.post(url, data=data)
+                res_json = resp.json()
+            except httpx.TimeoutException:
+                raise ValueError("Meta API timed out while creating Instagram media container.")
+            except Exception as e:
+                raise ValueError(f"Failed to communicate with Meta API: {e}")
+
+        if resp.status_code != 200 or "error" in res_json:
+            err = res_json.get("error", {})
+            err_msg = err.get("message", "Failed to create media container.")
+            code = err.get("code")
+            subcode = err.get("error_subcode")
+            logger.error(f"Meta create container error: code={code}, subcode={subcode}, msg={err_msg}")
+            raise ValueError(f"Meta Graph API error ({code}): {err_msg}")
+
+        return res_json
+
+    def check_container_status(self, access_token: str, container_id: str) -> Dict[str, Any]:
+        """
+        Check container upload status before publishing (especially for video/reels).
+        Status codes: EXPIRED, ERROR, FINISHED, IN_PROGRESS.
+        """
+        url = f"https://graph.facebook.com/{self.api_version}/{container_id}"
+        params = {
+            "fields": "status_code,status",
+            "access_token": access_token
+        }
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(url, params=params)
+            if resp.status_code != 200:
+                raise ValueError(f"Container status check failed with HTTP {resp.status_code}")
+            return resp.json()
+
+    def publish_media_container(self, access_token: str, account_identifier: str, container_id: str) -> Dict[str, Any]:
+        """
+        Step 2 of Instagram Graph API publishing: Publish the container.
+        """
+        url = f"https://graph.facebook.com/{self.api_version}/{account_identifier}/media_publish"
+        data = {
+            "creation_id": container_id,
+            "access_token": access_token
+        }
+        with httpx.Client(timeout=25.0) as client:
+            try:
+                resp = client.post(url, data=data)
+                res_json = resp.json()
+            except httpx.TimeoutException:
+                raise ValueError("Meta API timed out while publishing media container.")
+            except Exception as e:
+                raise ValueError(f"Meta publish request error: {e}")
+
+        if resp.status_code != 200 or "error" in res_json:
+            err = res_json.get("error", {})
+            err_msg = err.get("message", "Failed to publish media container.")
+            code = err.get("code")
+            logger.error(f"Meta media_publish error: code={code}, msg={err_msg}")
+            raise ValueError(f"Meta Graph API publish error ({code}): {err_msg}")
+
+        return res_json
+
+    def fetch_media_comments(self, access_token: str, external_media_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Fetch comments for a media post where Meta API permissions allow.
+        """
+        url = f"https://graph.facebook.com/{self.api_version}/{external_media_id}/comments"
+        params = {
+            "fields": "id,text,timestamp,username,like_count",
+            "limit": min(limit, 50),
+            "access_token": access_token
+        }
+        comments = []
+        with httpx.Client(timeout=12.0) as client:
+            try:
+                resp = client.get(url, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for c in data.get("data", []):
+                        comments.append({
+                            "external_comment_id": str(c.get("id")),
+                            "text": c.get("text", ""),
+                            "timestamp": c.get("timestamp"),
+                            "username": c.get("username"),
+                            "like_count": c.get("like_count", 0)
+                        })
+            except Exception as e:
+                logger.warning(f"Error fetching comments for media {external_media_id}: {e}")
+        return comments
+
+    def reply_to_comment(self, access_token: str, target_id: str, message: str) -> Dict[str, Any]:
+        """
+        Post a comment or reply to an existing comment on Instagram via Meta Graph API.
+        """
+        url = f"https://graph.facebook.com/{self.api_version}/{target_id}/comments"
+        data = {
+            "message": message,
+            "access_token": access_token
+        }
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.post(url, data=data)
+            res_json = resp.json()
+            if resp.status_code != 200 or "error" in res_json:
+                err_msg = res_json.get("error", {}).get("message", "Failed to post comment.")
+                raise ValueError(f"Meta comment error: {err_msg}")
+            return res_json
+

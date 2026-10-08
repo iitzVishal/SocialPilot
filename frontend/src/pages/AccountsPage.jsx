@@ -86,6 +86,23 @@ export const AccountsPage = () => {
   // Permissions Form State
   const [customPermissions, setCustomPermissions] = useState({});
 
+  // Instagram Command Center state
+  const [isCommandCenterOpen, setIsCommandCenterOpen] = useState(false);
+  const [commandCenterLoading, setCommandCenterLoading] = useState(false);
+  const [commandCenterAccount, setCommandCenterAccount] = useState(null);
+  const [commandCenterScore, setCommandCenterScore] = useState(null);
+  const [commandCenterSnapshots, setCommandCenterSnapshots] = useState([]);
+  const [commandCenterMedia, setCommandCenterMedia] = useState([]);
+  const [commandCenterTab, setCommandCenterTab] = useState('content');
+
+  // Instagram Comments state
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [activeMediaForComments, setActiveMediaForComments] = useState(null);
+  const [mediaComments, setMediaComments] = useState([]);
+  const [commentInput, setCommentInput] = useState('');
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [postingComment, setPostingComment] = useState(false);
+
   const showToast = (msg, type = 'success') => {
     setToastMessage({ msg, type });
     setTimeout(() => setToastMessage(null), 4500);
@@ -318,6 +335,59 @@ export const AccountsPage = () => {
       showToast('Failed to disconnect account.', 'error');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleOpenCommandCenter = async (account) => {
+    setActiveAccount(account);
+    setCommandCenterAccount(account);
+    setIsCommandCenterOpen(true);
+    setCommandCenterLoading(true);
+    setCommandCenterTab('content');
+    try {
+      const [scoreRes, snapsRes, mediaRes] = await Promise.all([
+        accountsAPI.getInstagramPerformanceScore(account.id).catch(() => null),
+        accountsAPI.getInstagramSnapshots(account.id, 30).catch(() => ({ data: [] })),
+        accountsAPI.getInstagramMedia(account.id, { limit: 25 }).catch(() => ({ data: [] }))
+      ]);
+      if (scoreRes?.data) setCommandCenterScore(scoreRes.data);
+      if (snapsRes?.data) setCommandCenterSnapshots(snapsRes.data);
+      if (mediaRes?.data) setCommandCenterMedia(mediaRes.data);
+    } catch (err) {
+      console.error('Error loading Instagram Command Center data:', err);
+    } finally {
+      setCommandCenterLoading(false);
+    }
+  };
+
+  const handleOpenComments = async (mediaItem) => {
+    setActiveMediaForComments(mediaItem);
+    setIsCommentsOpen(true);
+    setCommentsLoading(true);
+    try {
+      const res = await accountsAPI.getInstagramComments(commandCenterAccount.id, mediaItem.id);
+      setMediaComments(res.data || []);
+    } catch (err) {
+      console.error('Error loading comments:', err);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const handlePostComment = async () => {
+    if (!commentInput.trim() || !activeMediaForComments || !commandCenterAccount) return;
+    setPostingComment(true);
+    try {
+      await accountsAPI.postInstagramComment(commandCenterAccount.id, activeMediaForComments.id, commentInput.trim());
+      showToast('Comment posted successfully to Instagram!');
+      setCommentInput('');
+      const res = await accountsAPI.getInstagramComments(commandCenterAccount.id, activeMediaForComments.id);
+      setMediaComments(res.data || []);
+    } catch (err) {
+      console.error('Error posting comment:', err);
+      showToast(err.response?.data?.detail || 'Failed to post comment to Instagram.', 'error');
+    } finally {
+      setPostingComment(false);
     }
   };
 
@@ -759,6 +829,19 @@ export const AccountsPage = () => {
                   </div>
                 </div>
 
+                {/* Instagram Command Center CTA */}
+                {account.platform === 'instagram' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-amber-500/10 border-rose-500/30 text-rose-600 dark:text-rose-300 hover:from-purple-500/20 hover:to-rose-500/20 transition-all cursor-pointer shadow-2xs"
+                    onClick={() => handleOpenCommandCenter(account)}
+                  >
+                    <Activity className="h-3.5 w-3.5 text-rose-500" />
+                    Command Center & Insights
+                  </Button>
+                )}
+
                 {/* Card Action Buttons */}
                 <div className="mt-5 grid grid-cols-4 gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                   <Button
@@ -1195,6 +1278,334 @@ export const AccountsPage = () => {
               ? (connectInstagram ? 'Connect Instagram Account' : 'Connect Facebook Page')
               : (connectInstagram ? 'Connect Page & Instagram' : 'Connect Selected Page')}
           </Button>
+        </div>
+      </Modal>
+
+      {/* 5. Instagram Command Center Modal */}
+      <Modal
+        isOpen={isCommandCenterOpen}
+        onClose={() => setIsCommandCenterOpen(false)}
+        title={commandCenterAccount ? `Instagram Command Center: @${commandCenterAccount.account_name}` : 'Instagram Command Center'}
+        description="Real-time Meta Graph API command center: audience, performance scoring, media & comments."
+        maxWidth="4xl"
+      >
+        {commandCenterLoading ? (
+          <div className="py-12 flex flex-col items-center justify-center space-y-3">
+            <RefreshCw className="h-8 w-8 text-rose-500 animate-spin" />
+            <p className="text-xs font-medium text-slate-500">Connecting to Meta Graph API & Loading PostgreSQL Data...</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Command Center Header */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-amber-500/10 border border-rose-500/20 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                {commandCenterAccount?.platform_permissions?.picture_url ? (
+                  <img
+                    src={commandCenterAccount.platform_permissions.picture_url}
+                    alt={commandCenterAccount.account_name}
+                    className="h-12 w-12 rounded-xl object-cover border border-rose-500/30"
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-500 text-white flex items-center justify-center font-bold">
+                    IG
+                  </div>
+                )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-heading">
+                      @{commandCenterAccount?.account_name}
+                    </h3>
+                    <Badge variant={commandCenterAccount?.connection_status === 'connected' ? 'success' : 'warning'} size="xs">
+                      {commandCenterAccount?.connection_status?.toUpperCase() || 'CONNECTED'}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Last Synced: {formatRelativeTime(commandCenterAccount?.last_synced_at)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={async () => {
+                    if (commandCenterAccount) {
+                      await handleSyncAccount(commandCenterAccount);
+                      handleOpenCommandCenter(commandCenterAccount);
+                    }
+                  }}
+                  disabled={syncingAccountId === commandCenterAccount?.id}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${syncingAccountId === commandCenterAccount?.id ? 'animate-spin' : ''}`} />
+                  {syncingAccountId === commandCenterAccount?.id ? 'Syncing...' : 'Sync Now'}
+                </Button>
+              </div>
+            </div>
+
+            {/* KPI Cards Row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {/* Performance Score */}
+              <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                  <span>Performance Score</span>
+                  <Badge variant="primary" size="xs">
+                    {commandCenterScore?.grade || 'Good'}
+                  </Badge>
+                </div>
+                <div className="text-2xl font-black text-rose-600 dark:text-rose-400 font-heading">
+                  {commandCenterScore?.score ?? 0}
+                  <span className="text-xs font-normal text-slate-400"> / 100</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 line-clamp-1" title={commandCenterScore?.formula_description}>
+                  Deterministic SocialPilot Score
+                </p>
+              </div>
+
+              {/* Followers */}
+              <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700">
+                <div className="text-[11px] text-slate-500 mb-1">Followers</div>
+                <div className="text-2xl font-black text-slate-900 dark:text-slate-100 font-heading">
+                  {(commandCenterAccount?.platform_permissions?.follower_count ?? 0).toLocaleString()}
+                </div>
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1">
+                  Real Meta API Audience
+                </p>
+              </div>
+
+              {/* Media Count */}
+              <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700">
+                <div className="text-[11px] text-slate-500 mb-1">Media Count</div>
+                <div className="text-2xl font-black text-slate-900 dark:text-slate-100 font-heading">
+                  {(commandCenterAccount?.platform_permissions?.post_count ?? commandCenterMedia.length).toLocaleString()}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {commandCenterMedia.length} Synced Locally
+                </p>
+              </div>
+
+              {/* Total Engagement */}
+              <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700">
+                <div className="text-[11px] text-slate-500 mb-1">Engagement Rate</div>
+                <div className="text-2xl font-black text-purple-600 dark:text-purple-400 font-heading">
+                  {commandCenterScore?.breakdown?.engagement_rate ?? 0}%
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {(commandCenterScore?.breakdown?.likes ?? 0) + (commandCenterScore?.breakdown?.comments ?? 0)} Engagements
+                </p>
+              </div>
+            </div>
+
+            {/* Tab Switcher */}
+            <div className="flex border-b border-slate-200 dark:border-slate-700 gap-4 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setCommandCenterTab('content')}
+                className={`pb-2.5 cursor-pointer transition-colors ${commandCenterTab === 'content' ? 'border-b-2 border-rose-500 text-rose-600 dark:text-rose-400' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Published Content ({commandCenterMedia.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCommandCenterTab('growth')}
+                className={`pb-2.5 cursor-pointer transition-colors ${commandCenterTab === 'growth' ? 'border-b-2 border-rose-500 text-rose-600 dark:text-rose-400' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Audience Growth ({commandCenterSnapshots.length} Days)
+              </button>
+              <button
+                type="button"
+                onClick={() => setCommandCenterTab('messages')}
+                className={`pb-2.5 cursor-pointer transition-colors ${commandCenterTab === 'messages' ? 'border-b-2 border-rose-500 text-rose-600 dark:text-rose-400' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Direct Messaging
+              </button>
+            </div>
+
+            {/* Tab 1: Content & Performance */}
+            {commandCenterTab === 'content' && (
+              <div>
+                {commandCenterMedia.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No Instagram media synchronized yet. Tap &apos;Sync Now&apos; to ingest recent posts from Meta.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[380px] overflow-y-auto pr-1">
+                    {commandCenterMedia.map((m) => (
+                      <div key={m.id || m.external_media_id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 uppercase">
+                              {m.media_type}
+                            </span>
+                            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                              Score: {m.performance_score}
+                            </span>
+                          </div>
+                          {m.thumbnail_url && (
+                            <img
+                              src={m.thumbnail_url}
+                              alt={m.caption || 'Instagram Post'}
+                              className="h-32 w-full object-cover rounded-lg mb-2 border border-slate-100 dark:border-slate-800"
+                            />
+                          )}
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2 mb-2">
+                            {m.caption || 'No caption'}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-800">
+                            <span>❤️ {m.like_count ?? 0}</span>
+                            <span>💬 {m.comments_count ?? 0}</span>
+                            <span>👁️ {m.views_count ?? m.reach_count ?? 0}</span>
+                          </div>
+                          <div className="mt-2.5 flex items-center justify-between gap-2">
+                            {m.permalink && (
+                              <a
+                                href={m.permalink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-0.5"
+                              >
+                                View on IG ↗
+                              </a>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => handleOpenComments(m)}
+                              className="text-[10px]"
+                            >
+                              Comments ({m.comments_count ?? 0})
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: Growth Snapshots */}
+            {commandCenterTab === 'growth' && (
+              <div className="max-h-[360px] overflow-y-auto">
+                {commandCenterSnapshots.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No historical snapshots recorded yet. Daily snapshots will accumulate as the account syncs.
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-400 text-[11px]">
+                        <th className="pb-2 font-medium">Date</th>
+                        <th className="pb-2 font-medium">Followers</th>
+                        <th className="pb-2 font-medium">Net Growth</th>
+                        <th className="pb-2 font-medium">Growth Rate</th>
+                        <th className="pb-2 font-medium">Reach</th>
+                        <th className="pb-2 font-medium">Impressions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {commandCenterSnapshots.map((s) => (
+                        <tr key={s.id || s.date} className="text-slate-700 dark:text-slate-300">
+                          <td className="py-2.5 font-mono text-[11px]">{s.date}</td>
+                          <td className="py-2.5 font-bold">{(s.follower_count ?? 0).toLocaleString()}</td>
+                          <td className={`py-2.5 font-bold ${(s.net_follower_growth ?? 0) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {(s.net_follower_growth ?? 0) >= 0 ? `+${s.net_follower_growth}` : s.net_follower_growth}
+                          </td>
+                          <td className="py-2.5 text-slate-500">{s.growth_rate ?? 0}%</td>
+                          <td className="py-2.5 text-slate-500">{(s.reach ?? 0).toLocaleString()}</td>
+                          <td className="py-2.5 text-slate-500">{(s.impressions ?? 0).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {/* Tab 3: Direct Messaging Policy */}
+            {commandCenterTab === 'messages' && (
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-sm">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>Meta Official Policy & Requirement</span>
+                </div>
+                <p>
+                  Instagram Direct Messaging via the Meta Graph API requires an Approved Meta Business App with the <strong>instagram_manage_messages</strong> permission and Meta App Review verification.
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  SocialPilot connects directly to the official Meta API and strictly adheres to Meta policies. To activate customer direct messages, configure your Meta App with Messaging permissions in the Meta Developer Console.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" onClick={() => setIsCommandCenterOpen(false)}>
+                Close Command Center
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* 6. Post Comments Modal */}
+      <Modal
+        isOpen={isCommentsOpen}
+        onClose={() => setIsCommentsOpen(false)}
+        title="Instagram Post Comments"
+        description={activeMediaForComments?.caption ? `"${activeMediaForComments.caption.slice(0, 60)}..."` : 'View and reply to comments on this post'}
+      >
+        <div className="space-y-4">
+          <div className="max-h-60 overflow-y-auto space-y-2.5 pr-1">
+            {commentsLoading ? (
+              <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin text-rose-500" />
+                <span>Loading comments from Meta...</span>
+              </div>
+            ) : mediaComments.length === 0 ? (
+              <div className="py-6 text-center text-xs text-slate-400">
+                No comments on this post yet.
+              </div>
+            ) : (
+              mediaComments.map((c) => (
+                <div key={c.id || c.external_comment_id} className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      @{c.from_username || 'user'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {c.timestamp ? new Date(c.timestamp).toLocaleDateString() : ''}
+                    </span>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-300">{c.text}</p>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Reply Form */}
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex gap-2">
+            <input
+              type="text"
+              placeholder="Write a comment / reply..."
+              value={commentInput}
+              onChange={(e) => setCommentInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handlePostComment();
+              }}
+              className="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-rose-500"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handlePostComment}
+              disabled={!commentInput.trim() || postingComment}
+              isLoading={postingComment}
+            >
+              Post
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>

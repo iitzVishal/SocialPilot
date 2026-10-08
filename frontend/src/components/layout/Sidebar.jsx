@@ -66,14 +66,19 @@ export const Sidebar = ({ onClose }) => {
 
       {/* ── Brand Header ── */}
       <div className="flex h-16 items-center gap-3 px-5 border-b" style={{ borderColor: 'var(--border-default)' }}>
-        {/* Green shield logo icon */}
-        <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-white"
-          style={{ background: 'linear-gradient(135deg, #15803D, #22C55E)', boxShadow: '0 0 16px rgba(34,197,94,0.25)' }}
+        {/* SocialPilot brand logo icon */}
+        <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl overflow-hidden shadow-sm"
+          style={{
+            background: '#090d16',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            boxShadow: '0 0 12px rgba(34, 197, 94, 0.2)'
+          }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="white" opacity="0.9"/>
-            <path d="M9 12l2 2 4-4" stroke="#15803D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <img
+            src="/socialpilot-logo.jpg"
+            alt="SocialPilot Logo"
+            className="h-full w-full object-cover rounded-xl"
+          />
         </div>
 
         <div>

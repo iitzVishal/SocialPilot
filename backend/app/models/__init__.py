@@ -6,6 +6,12 @@ from app.models.social_account import SocialAccount
 from app.models.team_invitation import TeamInvitation
 from app.models.campaign import Campaign
 from app.models.notification import Notification
+from app.models.instagram_data import (
+    InstagramMetricSnapshot,
+    InstagramMedia,
+    InstagramComment,
+    MetaWebhookEvent,
+)
 
 __all__ = [
     "UserRole",
@@ -20,5 +26,9 @@ __all__ = [
     "TeamInvitation",
     "Campaign",
     "Notification",
+    "InstagramMetricSnapshot",
+    "InstagramMedia",
+    "InstagramComment",
+    "MetaWebhookEvent",
 ]
 

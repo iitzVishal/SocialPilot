@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from app.api.v1 import health, auth, users, accounts, oauth
-from app.api.v1.endpoints import media, posts, teams, invitations, campaigns, analytics, notifications, reports
+from app.api.v1.endpoints import media, posts, teams, invitations, campaigns, analytics, notifications, reports, webhooks
 
 api_router = APIRouter()
 
@@ -26,4 +26,7 @@ api_router.include_router(campaigns.router, prefix="/campaigns", tags=["Campaign
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
+
+# Meta Webhooks
+api_router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 

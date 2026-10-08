@@ -219,6 +219,21 @@ def update_account_permissions(
 def synchronize_account(db: Session, user: User, account_id: int) -> Dict[str, Any]:
     """Trigger account synchronization workflow through the integration adapter."""
     account = get_account(db, user, account_id)
+
+    # Route Instagram accounts to authoritative command center synchronization
+    if account.platform == SocialPlatform.INSTAGRAM:
+        from app.services.instagram_command_service import InstagramCommandService
+        res = InstagramCommandService.sync_instagram_account(db, account)
+        return {
+            "account_id": account.id,
+            "platform": account.platform,
+            "synced_at": account.last_synced_at or datetime.now(timezone.utc),
+            "connection_status": account.connection_status,
+            "sync_status": account.sync_status,
+            "message": f"Synchronization workflow executed for Instagram account '{account.account_name}'.",
+            "details": res
+        }
+
     adapter = get_platform_adapter(account.platform)
 
     decrypted_token = decrypt_token(account.access_token)

@@ -214,7 +214,35 @@ async def get_overview(
     except Exception as e:
         logger.warning(f"Error querying post_analytics in get_overview: {e}")
 
-    # Fallback to PostgreSQL stored recent posts if Mongo metrics were empty
+    # Fallback / canonical aggregation from PostgreSQL InstagramMedia and snapshots
+    try:
+        from app.models.instagram_data import InstagramMedia
+        from sqlalchemy import func
+        ig_media_q = (
+            db.query(
+                func.sum(InstagramMedia.like_count),
+                func.sum(InstagramMedia.comments_count),
+                func.sum(InstagramMedia.shares_count),
+                func.sum(InstagramMedia.reach_count),
+                func.sum(InstagramMedia.views_count)
+            )
+            .join(SocialAccount, InstagramMedia.account_id == SocialAccount.id)
+        )
+        if account_id:
+            ig_media_q = ig_media_q.filter(InstagramMedia.account_id == account_id)
+        else:
+            ig_media_q = ig_media_q.filter(SocialAccount.team_id == team_id)
+
+        ig_sums = ig_media_q.first()
+        if ig_sums and (ig_sums[0] or ig_sums[1] or ig_sums[2] or ig_sums[3]):
+            total_likes = max(total_likes, int(ig_sums[0] or 0))
+            total_comments = max(total_comments, int(ig_sums[1] or 0))
+            total_shares = max(total_shares, int(ig_sums[2] or 0))
+            total_reach = max(total_reach, int(ig_sums[3] or 0))
+    except Exception as ig_err:
+        logger.debug(f"PostgreSQL InstagramMedia query in get_overview: {ig_err}")
+
+    # Fallback to stored JSON recent posts if metrics were still empty
     if (total_likes + total_comments + total_impressions) == 0:
         for acc in accounts:
             perms = acc.platform_permissions or {}
@@ -227,7 +255,9 @@ async def get_overview(
                 total_reach += int(rp.get("reach", 0) or 0)
 
     total_engagements = total_likes + total_comments + total_shares
-    engagement_rate = round((total_engagements / total_impressions * 100), 2) if total_impressions and total_impressions > 0 else 0.0
+    engagement_rate = round((total_engagements / total_impressions * 100), 2) if total_impressions and total_impressions > 0 else (
+        round((total_engagements / max(1, total_reach) * 100), 2) if total_reach > 0 else 0.0
+    )
 
     return {
         "period_days": days,
@@ -983,7 +1013,43 @@ async def get_post_performance(
     except Exception as m_err:
         logger.warning(f"Error querying Mongo post performance: {m_err}")
 
-    # Fallback to PostgreSQL recent_posts if Mongo was empty
+    # Query canonical PostgreSQL InstagramMedia
+    if not posts:
+        try:
+            from app.models.instagram_data import InstagramMedia
+            from sqlalchemy import desc
+            ig_q = db.query(InstagramMedia).join(SocialAccount, InstagramMedia.account_id == SocialAccount.id)
+            if account_id:
+                ig_q = ig_q.filter(InstagramMedia.account_id == account_id)
+            else:
+                ig_q = ig_q.filter(SocialAccount.team_id == team_id)
+            if platform and platform.lower() != "instagram":
+                ig_q = ig_q.filter(False)
+            ig_media = ig_q.order_by(desc(InstagramMedia.performance_score)).offset(skip).limit(limit).all()
+            for m in ig_media:
+                posts.append({
+                    "external_post_id": m.external_media_id,
+                    "account_id": m.account_id,
+                    "account_name": m.social_account.account_name if m.social_account else "Instagram Account",
+                    "platform": "instagram",
+                    "caption": m.caption or "",
+                    "media_type": m.media_type.lower(),
+                    "thumbnail_url": m.thumbnail_url or m.media_url,
+                    "permalink": m.permalink,
+                    "published_at": m.timestamp.isoformat() if m.timestamp else m.created_at.isoformat(),
+                    "likes": m.like_count,
+                    "comments": m.comments_count,
+                    "shares": m.shares_count,
+                    "impressions": m.views_count,
+                    "reach": m.reach_count,
+                    "engagement": m.engagement,
+                    "performance_score": m.performance_score,
+                    "engagement_rate": round((m.engagement / max(1, m.reach_count)) * 100, 2) if m.reach_count > 0 else 0.0
+                })
+        except Exception as ig_err:
+            logger.warning(f"Error querying PostgreSQL InstagramMedia in get_post_performance: {ig_err}")
+
+    # Fallback to PostgreSQL recent_posts if Mongo and InstagramMedia were empty
     if not posts:
         accounts_q = db.query(SocialAccount).filter(SocialAccount.team_id == team_id)
         if account_id:

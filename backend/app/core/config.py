@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     META_OAUTH_SCOPES: str = "public_profile,pages_show_list,pages_read_engagement,pages_manage_posts"
     INSTAGRAM_AUTH_TYPE: str = "instagram_login"
     META_CONFIG_ID: Optional[str] = None
+    META_WEBHOOK_VERIFY_TOKEN: str = "socialpilot_meta_webhook_secret"
 
     LINKEDIN_CLIENT_ID: Optional[str] = None
     LINKEDIN_CLIENT_SECRET: Optional[str] = None

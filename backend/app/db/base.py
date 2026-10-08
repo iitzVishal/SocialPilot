@@ -7,6 +7,13 @@ from app.models.team_member import TeamMember
 from app.models.social_account import SocialAccount
 from app.models.team_invitation import TeamInvitation
 from app.models.campaign import Campaign
+from app.models.notification import Notification
+from app.models.instagram_data import (
+    InstagramMetricSnapshot,
+    InstagramMedia,
+    InstagramComment,
+    MetaWebhookEvent,
+)
 
 __all__ = [
     "Base",
@@ -20,4 +27,9 @@ __all__ = [
     "SocialAccount",
     "TeamInvitation",
     "Campaign",
+    "Notification",
+    "InstagramMetricSnapshot",
+    "InstagramMedia",
+    "InstagramComment",
+    "MetaWebhookEvent",
 ]

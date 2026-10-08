@@ -22,6 +22,10 @@ class SocialPlatform(str, enum.Enum):
 class SocialAccountStatus(str, enum.Enum):
     """Connection status indicators for managed social accounts."""
     CONNECTED = "connected"
+    SYNCING = "syncing"
+    NEEDS_ATTENTION = "needs_attention"
+    AUTHORIZATION_EXPIRED = "authorization_expired"
+    DISCONNECTED = "disconnected"
     EXPIRED = "expired"
     REVOKED = "revoked"
     ERROR = "error"

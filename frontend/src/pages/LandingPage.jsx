@@ -27,16 +27,7 @@ const Navbar = () => {
         {/* Logo */}
         <Link to="/" className="sp-logo">
           <div className="sp-logo__icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="url(#logoGrad)" opacity="0.9"/>
-              <path d="M9 12l2 2 4-4" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              <defs>
-                <linearGradient id="logoGrad" x1="4" y1="2" x2="20" y2="23" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#4ade80"/>
-                  <stop offset="1" stopColor="#16a34a"/>
-                </linearGradient>
-              </defs>
-            </svg>
+            <img src="/socialpilot-logo.jpg" alt="SocialPilot Logo" className="sp-logo__img" />
           </div>
           <div className="sp-logo__text">
             <span className="sp-logo__name">SocialPilot</span>
@@ -143,7 +134,9 @@ const HeroSection = () => {
                 {/* Mini dashboard UI */}
                 <div className="sp-dash">
                   <div className="sp-dash__sidebar">
-                    <div className="sp-dash__logo-mini">SP</div>
+                    <div className="sp-dash__logo-mini overflow-hidden">
+                      <img src="/socialpilot-logo.jpg" alt="SP" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '5px' }} />
+                    </div>
                     {['📊','📅','✏️','📁','👥','⚙️'].map((ico,i) => (
                       <div key={i} className={`sp-dash__nav-item${i===0?' sp-dash__nav-item--active':''}`}>{ico}</div>
                     ))}
@@ -595,11 +588,7 @@ const Footer = () => {
         <div className="sp-footer__brand">
           <div className="sp-logo">
             <div className="sp-logo__icon sp-logo__icon--sm">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="url(#lgF)" opacity="0.9"/>
-                <path d="M9 12l2 2 4-4" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                <defs><linearGradient id="lgF" x1="4" y1="2" x2="20" y2="23" gradientUnits="userSpaceOnUse"><stop stopColor="#4ade80"/><stop offset="1" stopColor="#16a34a"/></linearGradient></defs>
-              </svg>
+              <img src="/socialpilot-logo.jpg" alt="SocialPilot Logo" className="sp-logo__img" />
             </div>
             <div className="sp-logo__text">
               <span className="sp-logo__name">SocialPilot</span>

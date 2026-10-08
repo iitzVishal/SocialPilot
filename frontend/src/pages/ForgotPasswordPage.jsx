@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { Sparkles, Mail, ArrowLeft, Info } from 'lucide-react';
+import { Mail, ArrowLeft, Info } from 'lucide-react';
 
 export const ForgotPasswordPage = () => {
   const [email, setEmail] = useState('');
@@ -21,9 +21,17 @@ export const ForgotPasswordPage = () => {
       <div className="w-full max-w-md relative z-10">
         {/* Brand Logo Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-sky-500 via-cyan-500 to-emerald-500 dark:from-indigo-600 dark:via-purple-600 dark:to-pink-600 text-white shadow-lg shadow-cyan-500/25 dark:shadow-purple-500/25 mb-4">
-            <Sparkles className="h-6 w-6" aria-hidden="true" />
-          </div>
+          <Link to="/" className="inline-flex items-center justify-center mb-4 group text-decoration-none">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl overflow-hidden shadow-lg transition-transform group-hover:scale-105 border border-slate-700/50 bg-[#090d16]"
+              style={{ boxShadow: '0 0 24px rgba(34, 197, 94, 0.25)' }}
+            >
+              <img
+                src="/socialpilot-logo.jpg"
+                alt="SocialPilot Logo"
+                className="h-full w-full object-cover rounded-2xl"
+              />
+            </div>
+          </Link>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white font-heading">
             Reset your password
           </h1>
